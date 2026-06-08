@@ -1,0 +1,63 @@
+# ========================
+# GLOBAL
+# ========================
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+
+# environment
+.env
+.env.*
+!.env.example
+
+# runtime
+*.pid
+*.seed
+
+# ========================
+# FRONTEND (Next.js / React)
+# ========================
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/node_modules/
+frontend/.vercel/
+
+# ========================
+# BACKEND (NestJS / Node)
+# ========================
+backend/dist/
+backend/node_modules/
+backend/.cache/
+
+# Prisma
+backend/prisma/dev.db
+backend/prisma/*.db
+backend/prisma/migrations/*/shadow_database.sql
+
+# Playwright
+backend/playwright-report/
+backend/test-results/
+backend/.playwright/
+
+# ========================
+# LOG / TEMP FILES
+# ========================
+logs/
+*.log
+
+# ========================
+# IDE
+# ========================
+.vscode/
+.idea/
+
+# ========================
+# OPTIONAL (if using Docker)
+# ========================
+docker-compose.override.yml

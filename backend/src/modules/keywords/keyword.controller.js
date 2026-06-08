@@ -1,4 +1,4 @@
-import { addNewKeyword, activeKeywords } from '../worker/crawler.js';
+import { addNewKeyword, activeKeywords } from '../crawler/crawler.services.js';
 
 export const addKeywordController = (req, res) => {
     try {
@@ -12,9 +12,9 @@ export const addKeywordController = (req, res) => {
         addNewKeyword(keyword);
 
         // Trả kết quả về cho Frontend
-        return res.status(200).json({ 
-            message: "Thêm từ khóa thành công!", 
-            currentList: activeKeywords 
+        return res.status(200).json({
+            message: "Thêm từ khóa thành công!",
+            currentList: activeKeywords
         });
 
     } catch (error) {

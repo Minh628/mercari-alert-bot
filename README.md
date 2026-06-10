@@ -4,7 +4,7 @@ Dự án này là một hệ thống bot tự động cào thông tin (crawler) 
 
 ---
 
-## 📁 Cấu trúc thư mục dự án
+## Folder Structure
 
 Dưới đây là cấu trúc chi tiết của dự án dạng cây:
 
@@ -21,13 +21,16 @@ mercari-alert-bot/
 │   │   ├── modules/                     # Các module chức năng theo từng miền nghiệp vụ
 │   │   │   ├── crawler/                 # Module cào dữ liệu Mercari
 │   │   │   │   └── crawler.services.js  # Logic cào dữ liệu sử dụng Playwright
-│   │   │   └── keywords/                # Module quản lý từ khóa tìm kiếm
-│   │   │       ├── keyword.controller.js# Controller xử lý request CRUD từ khóa
-│   │   │       └── keyword.route.js     # Định nghĩa các endpoints cho từ khóa
+│   │   │   └── categories/              # Module quản lý cấu hình tìm kiếm danh mục
+│   │   │       ├── category.controller.js # Controller xử lý request CRUD danh mục
+│   │   │       └── category.route.js    # Định nghĩa các endpoints cho danh mục
+│   │   ├── services/                    # Các dịch vụ xử lý logic độc lập
+│   │   │   └── data.service.js          # Quản lý lưu trữ/đọc dữ liệu cấu hình
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
 │   │   └── app.js                       # Cấu hình Express application
-│   ├── .env                             # File cấu hình biến môi trường của Backend (DB URL, Bot token, v.v.)
+│   ├── .env                             # File cấu hình biến môi trường của Backend
+│   ├── data.json                        # File lưu trữ dữ liệu cấu hình (hybrid storage)
 │   ├── package.json                     # Quản lý dependencies và scripts của Backend
 │   └── server.js                        # Điểm khởi chạy (Entry Point) ứng dụng Backend
 │
@@ -87,3 +90,10 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ---
 
+## 🔌 API Endpoints
+
+| Method | Endpoint | Mô tả | Body |
+|--------|----------|-------|------|
+| `GET` | `/api/categories` | Lấy danh sách cấu hình tìm kiếm | — |
+| `POST` | `/api/categories` | Thêm cấu hình tìm kiếm mới | `{ category_id, name?, item_condition_id?, status?, brand_id?, price_min?, price_max? }` |
+| `DELETE` | `/api/categories/:id` | Xóa cấu hình theo ID | — |

@@ -1,4 +1,4 @@
-import keywordRoutes from '../modules/keywords/keyword.route.js';
+import categoryRoutes from '../modules/categories/category.route.js';
 import ApiError from '../utils/ApiError.js';
 
 /**
@@ -7,7 +7,7 @@ import ApiError from '../utils/ApiError.js';
  */
 export const setupRoutes = (app) => {
     // --- Routes Mounting ---
-    app.use('/api/keywords', keywordRoutes);
+    app.use('/api/categories', categoryRoutes);
 
 
     // Route mặc định kiểm tra server

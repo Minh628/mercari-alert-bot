@@ -1,4 +1,4 @@
-import categoryRoutes from '../modules/categories/category.route.js';
+import categoryRoutes from '../routes/category.routes.js';
 import ApiError from '../utils/ApiError.js';
 
 /**

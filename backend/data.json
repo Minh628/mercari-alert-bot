@@ -1,3 +1,17 @@
 {
-  "categories": []
+  "categories": [
+    {
+      "id": "d059f823",
+      "category_id": "885",
+      "item_condition_id": "1,3",
+      "status": "on_sale",
+      "brand_id": "3208,3099",
+      "price_min": 300,
+      "price_max": 600
+    },
+    {
+      "id": "f6d8a6d9",
+      "category_id": "885"
+    }
+  ]
 }

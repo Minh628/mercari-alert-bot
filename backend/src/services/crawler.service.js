@@ -2,7 +2,8 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import TelegramBot from 'node-telegram-bot-api';
-import { inMemoryCategories } from '../../services/data.service.js';
+// Thay thế việc import mảng trực tiếp bằng việc dùng Model getter
+import * as categoryModel from '../models/category.model.js';
 
 dotenv.config();
 chromium.use(stealth());
@@ -15,7 +16,7 @@ let isRunning = true;
 const randomDelay = (min = 3000, max = 7000) => new Promise(res => setTimeout(res, Math.floor(Math.random() * (max - min + 1) + min)));
 
 /**
- * Dựng URL tìm kiếm Mercari từ object cấu hình
+ * Dựng URL tìm kiếm Mercari từ object Categorys
  * Dấu phẩy trong item_condition_id và brand_id sẽ được encode thành %2C
  */
 function buildSearchUrl(category) {
@@ -48,13 +49,16 @@ function buildSearchUrl(category) {
 export async function startCrawlerLoop() {
     if (!isRunning) return;
 
-    if (inMemoryCategories.length === 0) {
-        console.log("⏳ [Worker] Chưa có cấu hình tìm kiếm nào. Đang chờ...");
+    // Lấy danh sách category mới nhất mỗi vòng lặp thông qua Model
+    const currentCategories = categoryModel.getAllCategories();
+
+    if (currentCategories.length === 0) {
+        console.log("⏳ [Worker] Chưa có Category tìm kiếm nào. Đang chờ...");
         setTimeout(startCrawlerLoop, 10000);
         return;
     }
 
-    console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${inMemoryCategories.length} cấu hình...`);
+    console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${currentCategories.length} Category...`);
     let browser = null;
 
     try {
@@ -117,16 +121,16 @@ export async function startCrawlerLoop() {
         });
 
         // 2. Lặp qua các cấu hình Category trên 1 Tab duy nhất
-        for (const category of inMemoryCategories) {
+        for (const category of currentCategories) {
             const searchUrl = buildSearchUrl(category);
-            console.log(`🔄 Đang quét: [${category.name}] → ${searchUrl}`);
+            console.log(`🔄 Đang quét: → ${searchUrl}`);
 
             try {
                 await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
                 // Đợi Mercari API trả về kết quả
                 await page.waitForTimeout(10000);
             } catch (err) {
-                console.log(`⚠️ Lỗi mạng khi quét ${category.name}, bỏ qua...`);
+                console.log(`⚠️ Lỗi mạng khi quét ${searchUrl}, bỏ qua...`);
             }
 
             // Random delay giữa các lần tìm kiếm
@@ -150,4 +154,3 @@ export function stopCrawler() {
     isRunning = false;
     console.log("🛑 [Worker] Crawler đã bị dừng.");
 }
-

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import app from './src/app.js';
-import { startCrawlerLoop } from './src/modules/crawler/crawler.services.js';
+import { startCrawlerLoop } from './src/services/crawler.service.js';
 
 // Load biến môi trường
 dotenv.config();

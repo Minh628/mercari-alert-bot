@@ -18,14 +18,14 @@ mercari-alert-bot/
 │   │   │   └── routes.js                # Đăng ký các API routes tập trung
 │   │   ├── middlewares/                 # Các Middleware của Express
 │   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
-│   │   ├── modules/                     # Các module chức năng theo từng miền nghiệp vụ
-│   │   │   ├── crawler/                 # Module cào dữ liệu Mercari
-│   │   │   │   └── crawler.services.js  # Logic cào dữ liệu sử dụng Playwright
-│   │   │   └── categories/              # Module quản lý cấu hình tìm kiếm danh mục
-│   │   │       ├── category.controller.js # Controller xử lý request CRUD danh mục
-│   │   │       └── category.route.js    # Định nghĩa các endpoints cho danh mục
-│   │   ├── services/                    # Các dịch vụ xử lý logic độc lập
-│   │   │   └── data.service.js          # Quản lý lưu trữ/đọc dữ liệu cấu hình
+│   │   ├── controllers/                 # Tầng xử lý Request và trả về Response
+│   │   │   └── category.controller.js   # Controller điều phối cho danh mục
+│   │   ├── models/                      # Tầng Model thao tác trực tiếp với dữ liệu
+│   │   │   └── category.model.js        # Đóng gói logic đọc/ghi data.json và bộ nhớ RAM
+│   │   ├── routes/                      # Định nghĩa các API endpoints
+│   │   │   └── category.routes.js       # Routes cho danh mục
+│   │   ├── services/                    # Các tiến trình chạy nền độc lập
+│   │   │   └── crawler.service.js       # Cỗ máy cào dữ liệu Mercari (Playwright)
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
 │   │   └── app.js                       # Cấu hình Express application
@@ -95,5 +95,5 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 | Method | Endpoint | Mô tả | Body |
 |--------|----------|-------|------|
 | `GET` | `/api/categories` | Lấy danh sách cấu hình tìm kiếm | — |
-| `POST` | `/api/categories` | Thêm cấu hình tìm kiếm mới | `{ category_id, name?, item_condition_id?, status?, brand_id?, price_min?, price_max? }` |
+| `POST` | `/api/categories` | Thêm cấu hình tìm kiếm mới | `{ category_id, , item_condition_id?, status?, brand_id?, price_min?, price_max? }` |
 | `DELETE` | `/api/categories/:id` | Xóa cấu hình theo ID | — |

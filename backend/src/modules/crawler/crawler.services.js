@@ -73,7 +73,7 @@ export async function startCrawlerLoop() {
             try {
                 await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
                 // Đợi Mercari API trả về kết quả
-                await page.waitForTimeout(5000); 
+                await page.waitForTimeout(10000); 
             } catch (err) {
                 console.log(`⚠️ Lỗi mạng khi quét ${keyword}, bỏ qua...`);
             }

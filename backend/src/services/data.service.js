@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Lưu file data.json ở thư mục gốc của backend
-const DATA_FILE_PATH = path.join(__dirname, '../../../data.json');
+const DATA_FILE_PATH = path.join(__dirname, '/../../data.json');
 
 // Mảng chứa từ khóa trên RAM (Hybrid)
 export let inMemoryKeywords = [];

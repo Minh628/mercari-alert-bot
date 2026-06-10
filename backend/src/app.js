@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { setupRoutes } from './config/routes.js';
 import { globalErrorHandler } from './middlewares/error.middleware.js';
-import { startCrawlerEngine } from './modules/crawler/crawler.services.js';
+
 const app = express();
 
 // Middlewares

@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import TelegramBot from 'node-telegram-bot-api';
+import { inMemoryKeywords } from '../../services/data.service.js';
 
 dotenv.config();
 chromium.use(stealth());
@@ -9,70 +10,92 @@ chromium.use(stealth());
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
 const sentItemsCache = new Set();
 let isRunning = true;
-// Mảng chứa các từ khóa đang được quét (Thay thế tạm cho Database)
-export const activeKeywords = [];
 
-// Hàm này sẽ được Controller gọi khi Frontend gửi từ khóa xuống
-export function addNewKeyword(keyword) {
-    if (!activeKeywords.includes(keyword)) {
-        activeKeywords.push(keyword);
-        console.log(`\n📥 [Worker] Đã nhận lệnh bổ sung từ khóa mới: ${keyword}`);
+// Hàm tạo khoảng dừng ngẫu nhiên an toàn (chống block IP)
+const randomDelay = (min = 3000, max = 7000) => new Promise(res => setTimeout(res, Math.floor(Math.random() * (max - min + 1) + min)));
+
+export async function startCrawlerLoop() {
+    if (!isRunning) return;
+
+    if (inMemoryKeywords.length === 0) {
+        console.log("⏳ [Worker] Chưa có từ khóa nào. Đang chờ...");
+        // Đợi 10s rồi chạy lại
+        setTimeout(startCrawlerLoop, 10000);
+        return;
     }
-}
 
-export async function startCrawlerEngine() {
-    console.log(`\n🚀 [Worker] Cỗ máy săn hàng đã khởi động ngầm...`);
+    console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${inMemoryKeywords.length} từ khóa...`);
+    let browser = null;
 
-    const browser = await chromium.launch({
-        headless: false, // Bật lên xem cho sướng mắt
-        channel: 'chrome',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    try {
+        // 1. Launch Browser tối ưu RAM (headless mode)
+        browser = await chromium.launch({
+            headless: true, 
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        });
+        const context = await browser.newContext();
+        const page = await context.newPage();
 
-    const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/148.0.0.0 Safari/537.36'
-    });
-    const page = await context.newPage();
+        // Chặn tải hình ảnh, CSS để giảm RAM
+        await page.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+                route.abort();
+            } else {
+                route.continue();
+            }
+        });
 
-    // Lắng nghe API ngầm
-    page.on('response', async (response) => {
-        if (response.url().includes('entities:search')) {
-            try {
-                const data = await response.json();
-                if (data && data.items) {
-                    for (const item of data.items) {
-                        if (!sentItemsCache.has(item.id)) {
-                            sentItemsCache.add(item.id);
-                            // Bắn Telegram (Chỉ log ra để test, khi nào chạy thật thì mở comment bot.sendMessage)
-                            console.log(`✈️ [Telegram] Phát hiện hàng mới: ${item.name} - ${item.price} JPY`);
-                            // await bot.sendMessage(process.env.TELEGRAM_CHAT_ID, `🔥 MỚI: ${item.name} - ${item.price} JPY`);
+        // Bắt API response ngầm để lấy data
+        page.on('response', async (response) => {
+            if (response.url().includes('entities:search')) {
+                try {
+                    const data = await response.json();
+                    if (data && data.items) {
+                        for (const item of data.items) {
+                            if (!sentItemsCache.has(item.id)) {
+                                sentItemsCache.add(item.id);
+                                console.log(`✈️ [Telegram] Phát hiện hàng mới: ${item.name} - ${item.price} JPY`);
+                                // Bỏ comment dòng dưới để bot chạy thực sự:
+                                // bot.sendMessage(process.env.TELEGRAM_CHAT_ID, `🔥 MỚI: ${item.name} - ${item.price} JPY\nhttps://jp.mercari.com/item/${item.id}`);
+                            }
                         }
                     }
-                }
-            } catch (e) { }
-        }
-    });
+                } catch (e) { }
+            }
+        });
 
-    // VÒNG LẶP VÔ TẬN
-    while (isRunning) {
-        if (activeKeywords.length === 0) {
-            console.log("⏳ [Worker] Chưa có từ khóa nào. Đang chờ lệnh từ Frontend...");
-            await page.waitForTimeout(5000);
-            continue; // Bỏ qua vòng lặp, quay lại chờ tiếp
-        }
-
-        for (const keyword of activeKeywords) {
-            console.log(`\n🔄 [Quét] Đang check hàng cho: [${keyword.toUpperCase()}]`);
+        // 2. Lặp qua các từ khóa trên 1 Tab duy nhất
+        for (const keyword of inMemoryKeywords) {
+            console.log(`🔄 Đang quét: [${keyword.toUpperCase()}]`);
             const searchUrl = `https://jp.mercari.com/search?keyword=${encodeURIComponent(keyword)}&sort=created_time&order=desc`;
             
             try {
-                await page.goto(searchUrl, { waitUntil: 'networkidle' });
-                await page.waitForTimeout(10000); // Đợi 10s cho API Mercari trả về
+                await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+                // Đợi Mercari API trả về kết quả
+                await page.waitForTimeout(5000); 
             } catch (err) {
-                console.log(`⚠️ Lỗi mạng, bỏ qua...`);
+                console.log(`⚠️ Lỗi mạng khi quét ${keyword}, bỏ qua...`);
             }
+            
+            // Random delay giữa các lần tìm kiếm
+            await randomDelay(3000, 6000);
         }
-        console.log("⏳ Nghỉ 10 giây trước khi quét vòng tiếp theo...");
-        await page.waitForTimeout(10000);
+    } catch (error) {
+        console.error('❌ [Worker] Lỗi Crawler:', error);
+    } finally {
+        // 3. Đóng Browser ngay sau khi vòng lặp hoàn thành để giải phóng RAM
+        if (browser) {
+            await browser.close();
+        }
     }
+
+    // 4. Lên lịch chạy lượt tiếp theo sau 10 giây
+    console.log("⏳ [Worker] Đã xong 1 vòng. Nghỉ 10s giải nhiệt...");
+    setTimeout(startCrawlerLoop, 10000);
+}
+
+export function stopCrawler() {
+    isRunning = false;
+    console.log("🛑 [Worker] Crawler đã bị dừng.");
 }

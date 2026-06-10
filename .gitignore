@@ -15,6 +15,9 @@ coverage/
 .env.*
 !.env.example
 
+#Agent
+.agents/
+
 # runtime
 *.pid
 *.seed

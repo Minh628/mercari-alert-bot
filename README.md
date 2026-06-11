@@ -11,7 +11,8 @@ Dưới đây là cấu trúc chi tiết của dự án dạng cây:
 ```text
 mercari-alert-bot/
 ├── backend/                             # Mã nguồn Backend (API & Crawler & Telegram Bot)
-│   ├── prisma/                          # Cấu hình cơ sở dữ liệu Prisma ORM
+│   ├── prisma/                          # Thư mục chứa Schema Prisma ORM
+│   │   └── schema.prisma                # Cấu hình DB (Bảng Category, Item, Composite Key)
 │   ├── src/                             # Thư mục chứa mã nguồn chính của Backend
 │   │   ├── config/                      # Cấu hình hệ thống
 │   │   │   ├── prisma.js                # Khởi tạo kết nối Prisma Client
@@ -20,17 +21,17 @@ mercari-alert-bot/
 │   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
 │   │   ├── controllers/                 # Tầng xử lý Request và trả về Response
 │   │   │   └── category.controller.js   # Controller điều phối cho danh mục
-│   │   ├── models/                      # Tầng Model thao tác trực tiếp với dữ liệu
-│   │   │   └── category.model.js        # Đóng gói logic đọc/ghi data.json và bộ nhớ RAM
 │   │   ├── routes/                      # Định nghĩa các API endpoints
 │   │   │   └── category.routes.js       # Routes cho danh mục
-│   │   ├── services/                    # Các tiến trình chạy nền độc lập
-│   │   │   └── crawler.service.js       # Cỗ máy cào dữ liệu Mercari (Playwright)
+│   │   ├── services/                    # Tầng nghiệp vụ & Các tiến trình chạy nền độc lập
+│   │   │   ├── category.service.js      # Service thao tác với DB PostgreSQL
+│   │   │   ├── itemManager.service.js   # Service quản lý cache và Sliding Window cho Item
+│   │   │   └── crawler.service.js       # Cỗ máy Playwright quét dữ liệu & quản lý Event-Driven Cache
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
 │   │   └── app.js                       # Cấu hình Express application
 │   ├── .env                             # File cấu hình biến môi trường của Backend
-│   ├── data.json                        # File lưu trữ dữ liệu cấu hình (hybrid storage)
+│   ├── prisma.config.ts                 # Cấu hình Datasource cho Prisma 7.x
 │   ├── package.json                     # Quản lý dependencies và scripts của Backend
 │   └── server.js                        # Điểm khởi chạy (Entry Point) ứng dụng Backend
 │

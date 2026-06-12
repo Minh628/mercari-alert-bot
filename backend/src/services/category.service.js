@@ -61,7 +61,8 @@ export const deleteCategory = async (id, userId) => {
 
     // Kiểm tra category có tồn tại và thuộc về user này không
     const category = await prisma.category.findFirst({
-        where: { id: Number(id), userId }
+        where: { id: Number(id), userId },
+        select: { id: true }
     });
 
     if (!category) {

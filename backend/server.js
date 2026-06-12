@@ -3,7 +3,9 @@ import app from './src/app.js';
 import { startCrawlerLoop } from './src/services/crawler.service.js';
 
 // Load biến môi trường
-dotenv.config();
+dotenv.config({
+    quiet: true
+});
 
 const PORT = process.env.PORT || 3000;
 

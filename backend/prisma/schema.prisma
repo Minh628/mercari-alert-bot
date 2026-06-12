@@ -1,9 +1,16 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/config/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// 1. Định nghĩa Enum cho các quyền
+enum Role {
+  ADMIN
+  MEMBER
 }
 
 model User {
@@ -11,8 +18,13 @@ model User {
   username   String     @unique
   password   String
   telegramId String?
+  
+  // 2. Thêm trường role, mặc định khách tạo tài khoản sẽ là MEMBER
+  role       Role       @default(MEMBER) 
+  
   createdAt  DateTime   @default(now())
   expiredAt  DateTime
+  
   categories Category[]
 }
 
@@ -26,16 +38,18 @@ model Category {
   itemConditionId String?
   isActive        Boolean   @default(false)
   lastScannedAt   DateTime?
+  
   userId          Int
   user            User      @relation(fields: [userId], references: [id])
+  
   items           Item[]
 }
 
 model Item {
-  id         String
-  categoryId Int
-  createdAt  DateTime @default(now())
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id          String
+  categoryId  Int
+  createdAt   DateTime @default(now())
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@id([id, categoryId])
   @@index([categoryId, createdAt])

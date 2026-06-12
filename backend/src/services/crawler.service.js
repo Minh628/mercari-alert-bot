@@ -7,7 +7,11 @@ import prisma from '../config/prisma.js';
 // Tích hợp Item Manager để tối ưu bộ nhớ và DB (Sliding Window)
 import itemManagerService from './itemManager.service.js';
 
-dotenv.config();
+dotenv.config({
+    quiet: true 
+}
+    
+);
 chromium.use(stealth());
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
@@ -26,7 +30,16 @@ export async function triggerReloadCategories() {
     try {
         console.log("🔄 [Worker] Nhận tín hiệu, đang tải lại Categories từ Database...");
         activeCategories = await prisma.category.findMany({
-            orderBy: { id: 'desc' }
+            orderBy: { id: 'desc' },
+            select: {
+                id: true,
+                categoryId: true,
+                itemConditionId: true,
+                status: true,
+                brandId: true,
+                priceMin: true,
+                priceMax: true
+            }
         });
         console.log(`✅ [Worker] Đã tải ${activeCategories.length} Categories vào RAM.`);
     } catch (error) {

@@ -1,5 +1,6 @@
 import categoryRoutes from '../routes/category.routes.js';
 import userRoutes from '../routes/user.routes.js';
+import itemRoutes from '../routes/item.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng
@@ -9,6 +10,7 @@ export const setupRoutes = (app) => {
     // --- Routes Mounting ---
     app.use('/api/categories', categoryRoutes);
     app.use('/api/users', userRoutes);
+    app.use('/api/items', itemRoutes);
 
 
     // Route mặc định kiểm tra server

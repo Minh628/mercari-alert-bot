@@ -1,15 +1,43 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { setupRoutes } from './config/routes.js';
 import { globalErrorHandler } from './middlewares/error.middleware.js';
 
 const app = express();
 
-// Middlewares
-app.use(cors()); // Cực kỳ quan trọng để React (cổng 5173) gọi được API (cổng 3000)
-app.use(express.urlencoded({ extended: true })); // Đọc được form data
-app.use(express.json()); // Đọc được JSON body
+// ✅ FEAT #2: Helmet - Bảo vệ HTTP headers
+app.use(helmet());
 
+// CORS - Cho phép frontend (React) gọi API
+app.use(cors());
+
+// ✅ FEAT #2: Rate Limiting - Chống spam/DDoS
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 phút
+    max: 100, // Tối đa 100 request / 15 phút / IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        status: 'fail',
+        message: 'Quá nhiều request từ IP này, vui lòng thử lại sau 15 phút.'
+    }
+});
+app.use('/api/', apiLimiter);
+
+// Parse request body
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// ✅ FEAT #1: Health Check - Dùng UptimeRobot ping để chống Render Sleep
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        uptime: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
+});
 
 // --- Setup Routes ---
 setupRoutes(app);

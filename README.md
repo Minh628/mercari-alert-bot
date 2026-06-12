@@ -18,22 +18,33 @@ mercari-alert-bot/
 │   │   │   ├── prisma.js                # Khởi tạo kết nối Prisma Client
 │   │   │   └── routes.js                # Đăng ký các API routes tập trung
 │   │   ├── middlewares/                 # Các Middleware của Express
+│   │   │   ├── auth.middleware.js       # Xác thực JWT (Authentication)
+│   │   │   ├── role.middleware.js       # Phân quyền (Authorization)
+│   │   │   ├── expiry.middleware.js     # Kiểm tra tài khoản hết hạn (expiredAt)
 │   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
 │   │   ├── controllers/                 # Tầng xử lý Request và trả về Response
-│   │   │   └── category.controller.js   # Controller điều phối cho danh mục
+│   │   │   ├── user.controller.js       # Controller điều phối cho User (Đăng nhập/Đăng ký/Quản lý)
+│   │   │   ├── category.controller.js   # Controller điều phối cho danh mục
+│   │   │   └── item.controller.js       # Controller điều phối cho Items đã crawl
 │   │   ├── routes/                      # Định nghĩa các API endpoints
-│   │   │   └── category.routes.js       # Routes cho danh mục
+│   │   │   ├── user.routes.js           # Routes cho User & Auth
+│   │   │   ├── category.routes.js       # Routes cho danh mục
+│   │   │   └── item.routes.js           # Routes cho Items
 │   │   ├── services/                    # Tầng nghiệp vụ & Các tiến trình chạy nền độc lập
+│   │   │   ├── user.service.js          # Service xử lý logic User
 │   │   │   ├── category.service.js      # Service thao tác với DB PostgreSQL
+│   │   │   ├── item.service.js          # Service quản lý Items (xem, thống kê, dọn dẹp)
 │   │   │   ├── itemManager.service.js   # Service quản lý cache và Sliding Window cho Item
 │   │   │   └── crawler.service.js       # Cỗ máy Playwright quét dữ liệu & quản lý Event-Driven Cache
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
-│   │   └── app.js                       # Cấu hình Express application
+│   │   └── app.js                       # Cấu hình Express (Helmet, Rate Limit, Health Check)
 │   ├── .env                             # File cấu hình biến môi trường của Backend
+│   ├── Dockerfile                       # Cấu hình Docker build Playwright cho Render
+│   ├── .dockerignore                    # Bỏ qua các file không đưa vào Docker
 │   ├── prisma.config.ts                 # Cấu hình Datasource cho Prisma 7.x
 │   ├── package.json                     # Quản lý dependencies và scripts của Backend
-│   └── server.js                        # Điểm khởi chạy (Entry Point) ứng dụng Backend
+│   └── server.js                        # Entry Point + Graceful Shutdown (SIGTERM/SIGINT)
 │
 └── frontend/                            # Mã nguồn Frontend (Giao diện React)
     ├── public/                          # Chứa tài nguyên tĩnh (static files)
@@ -91,10 +102,82 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ---
 
+## 📋 Thay đổi gần đây
+
+### [2026-06-12] Setup Môi trường Deploy (Docker & Vercel)
+- **FEAT**: Sửa URL API của Frontend thành biến môi trường `VITE_API_URL` để gọi API động trên Vercel.
+- **NEW**: Thêm `Dockerfile` cho Backend. Tự động xử lý lệnh `npx playwright install --with-deps` để sửa lỗi thiếu thư viện hệ điều hành của Playwright trên Render.
+- **NEW**: Thêm `.dockerignore` tối ưu dung lượng ảnh build.
+
+### [2026-06-12] Fix Bug & Tối ưu Render
+- **FIX**: Crawler gửi Telegram đúng `telegramId` của user sở hữu category (multi-user safe).
+- **FIX**: Chặn user hết hạn (`expiredAt`) khỏi đăng nhập và sử dụng API. Crawler cũng bỏ qua category của user hết hạn.
+- **FIX**: Tên biến `.env` (`TELEGRAM_TOKEN`) đồng bộ với code.
+- **OPT**: Preload ItemManager cache khi khởi động — chống spam Telegram khi server restart.
+- **OPT**: Playwright dùng Persistent Browser + `waitForResponse` thay `waitForTimeout` — giảm RAM & CPU.
+- **OPT**: Graceful Shutdown — tắt browser + DB sạch sẽ khi nhận SIGTERM.
+- **FEAT**: Health Check endpoint `GET /health` — dùng UptimeRobot ping chống Render Sleep.
+- **FEAT**: Helmet (bảo vệ HTTP headers) + Rate Limiting (100 req/15min/IP).
+- **NEW**: Middleware `expiry.middleware.js` kiểm tra tài khoản hết hạn.
+
+---
+
+## 🚀 Hướng dẫn Deploy Lên Production
+
+### 1. Deploy Backend Lên Render (Web Service)
+Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependencies của Playwright.
+1. Vào Render Dashboard, tạo mới **Web Service**.
+2. Kết nối repo Github.
+3. Chọn thư mục root là `backend/`.
+4. Mục **Environment**: Chọn `Docker`.
+5. Thiết lập biến môi trường (Environment Variables):
+   - `DATABASE_URL`: Link kết nối tới Database Postgres (Neon, Supabase...).
+   - `TELEGRAM_TOKEN`: Token bot Telegram của bạn.
+   - `JWT_SECRET`: Chuỗi bảo mật ngẫu nhiên.
+6. Render sẽ tự động build `Dockerfile`, cài thư viện OS, Playwright Chromium và khởi chạy.
+
+### 2. Deploy Frontend Lên Vercel
+1. Vào Vercel, tạo Project mới và kết nối Repo Github.
+2. Root Directory: Chọn thư mục `frontend/`.
+3. Framework Preset: Để mặc định `Vite`.
+4. Biến môi trường (Environment Variables):
+   - Bắt buộc thêm biến `VITE_API_URL` trỏ tới đường link Backend bạn vừa lấy được từ Render (Ví dụ: `https://mercari-backend.onrender.com/api`).
+5. Deploy.
+
+---
+
 ## 🔌 API Endpoints
 
-| Method | Endpoint | Mô tả | Body |
-|--------|----------|-------|------|
-| `GET` | `/api/categories` | Lấy danh sách cấu hình tìm kiếm | — |
-| `POST` | `/api/categories` | Thêm cấu hình tìm kiếm mới | `{ category_id, , item_condition_id?, status?, brand_id?, price_min?, price_max? }` |
-| `DELETE` | `/api/categories/:id` | Xóa cấu hình theo ID | — |
+> Ký hiệu quyền: 🔓 Public | 🔑 JWT (ADMIN & MEMBER) | 👑 Admin Only | 👤 Owner Only
+
+### 1. User & Authentication (`/api/users`)
+| Method | Endpoint | Quyền | Mô tả | Body |
+|--------|----------|-------|-------|------|
+| `POST` | `/login` | 🔓 | Đăng nhập & Lấy JWT | `{ username, password }` |
+| `GET` | `/profile` | 🔑 | Xem profile bản thân | — |
+| `PATCH` | `/profile` | 🔑👤 | Tự đổi password / telegramId | `{ password?, telegramId? }` |
+| `POST` | `/` | 👑 | Admin tạo tài khoản mới | `{ username, password, telegramId?, role?, expiredAt? }` |
+| `GET` | `/` | 👑 | Admin xem danh sách tất cả Users | — |
+| `PUT` | `/:id` | 👑 | Admin sửa thông tin User | `{ password?, telegramId?, role?, expiredAt? }` |
+| `DELETE` | `/:id` | 👑 | Admin xóa User | — |
+
+### 2. Categories (`/api/categories`)
+| Method | Endpoint | Quyền | Mô tả | Body |
+|--------|----------|-------|-------|------|
+| `GET` | `/` | 🔑 | Lấy danh sách Category của mình | — |
+| `POST` | `/` | 🔑 | Thêm Category tìm kiếm mới | `{ categoryId, itemConditionId?, status?, brandId?, priceMin?, priceMax?, isActive? }` |
+| `PUT` | `/:id` | 🔑 | Cập nhật Category (chỉ của mình) | `{ ...các trường cần sửa }` |
+| `DELETE` | `/:id` | 🔑 | Xóa Category (chỉ của mình) | — |
+| `GET` | `/all` | 👑 | Admin xem tất cả Categories của mọi User | — |
+
+### 3. Items (`/api/items`)
+| Method | Endpoint | Quyền | Mô tả | Query |
+|--------|----------|-------|-------|-------|
+| `GET` | `/:categoryId` | 🔑 | Xem Items của 1 Category mình sở hữu | — |
+| `GET` | `/stats` | 👑 | Admin xem thống kê Items | — |
+| `DELETE` | `/cleanup` | 👑 | Admin dọn dẹp Items cũ | `?days=7` |
+
+### 4. Health Check
+| Method | Endpoint | Quyền | Mô tả |
+|--------|----------|-------|-------|
+| `GET` | `/health` | 🔓 | Kiểm tra server còn sống (dùng UptimeRobot ping chống Render Sleep) |

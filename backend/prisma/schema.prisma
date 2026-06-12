@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/config/prisma"
 }
 
 datasource db {
@@ -32,7 +31,7 @@ model Category {
   id              Int       @id @default(autoincrement())
   categoryId      String
   brandId         String?
-  status          String    @default("ITEM_STATUS_ON_SALE")
+  status          String?   // ITEM_STATUS_ON_SALE, ITEM_STATUS_SOLD_OUT, ITEM_STATUS_TRADING_OUT
   priceMin        Int?
   priceMax        Int?
   itemConditionId String?

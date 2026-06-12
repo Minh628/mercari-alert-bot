@@ -110,3 +110,19 @@ export const updateCategory = async (id, userId, data) => {
 
     return category;
 };
+
+/**
+ * 👑 Admin: Lấy tất cả Categories của mọi User (kèm thông tin user sở hữu)
+ * @returns {Promise<Array>} Danh sách tất cả category
+ */
+export const getAllCategoriesAdmin = async () => {
+    return prisma.category.findMany({
+        orderBy: { id: 'desc' },
+        // Kèm thông tin user sở hữu để admin biết category này thuộc ai
+        include: {
+            user: {
+                select: { id: true, username: true }
+            }
+        }
+    });
+};

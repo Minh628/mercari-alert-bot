@@ -57,8 +57,8 @@ class ItemManagerService {
       throw error;
     }
 
-    // 3. SLIDING WINDOW (Luật 1000/150): Nếu số lượng item trong RAM của category vượt quá 1000
-    if (categoryCache.size > 1000) {
+    // 3. SLIDING WINDOW (Luật 10000/9850): Nếu số lượng item trong RAM của category vượt quá 10000
+    if (categoryCache.size > 10000) {
       // Đảm bảo tại một thời điểm chỉ có 1 tiến trình evict cho mỗi category
       if (!this.isEvicting.get(categoryId)) {
         this.isEvicting.set(categoryId, true);
@@ -77,16 +77,16 @@ class ItemManagerService {
   }
 
   /**
-   * Xóa 850 items cũ nhất khỏi DB & RAM (Composite Key: cần cả id + categoryId để xóa)
+   * Xóa 9850 items cũ nhất khỏi DB & RAM (Composite Key: cần cả id + categoryId để xóa)
    * @param {number} categoryId 
    * @param {Set<string>} categoryCache 
    */
   async _evictOldItems(categoryId, categoryCache) {
-    // Truy vấn DB lấy 850 items có thời gian tạo cũ nhất (tận dụng @@index([categoryId, createdAt]))
+    // Truy vấn DB lấy 9850 items có thời gian tạo cũ nhất (tận dụng @@index([categoryId, createdAt]))
     const oldestItems = await prisma.item.findMany({
       where: { categoryId: categoryId },
       orderBy: { createdAt: 'asc' },
-      take: 850,
+      take: 9850,
       select: { id: true }
     });
 
@@ -103,7 +103,7 @@ class ItemManagerService {
       }
     });
 
-    // Xóa đúng 850 items vừa tìm được ra khỏi RAM cache
+    // Xóa đúng 9850 items vừa tìm được ra khỏi RAM cache
     for (const itemId of oldestItems.map(item => item.id)) {
       categoryCache.delete(itemId);
     }

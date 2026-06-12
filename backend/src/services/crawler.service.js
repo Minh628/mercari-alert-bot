@@ -7,30 +7,39 @@ import prisma from '../config/prisma.js';
 // Tích hợp Item Manager để tối ưu bộ nhớ và DB (Sliding Window)
 import itemManagerService from './itemManager.service.js';
 
-dotenv.config({
-    quiet: true 
-}
-    
-);
+dotenv.config({ quiet: true });
 chromium.use(stealth());
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
+// ✅ FIX BUG #3: Đổi TELEGRAM_BOT_TOKEN → TELEGRAM_TOKEN cho khớp .env
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: false });
 
 let isRunning = true;
 
 // --- BIẾN RAM NỘI BỘ (Event-Driven Cache) ---
-// Chứa danh sách các cấu hình tìm kiếm hiện tại, giúp vòng lặp không phải query DB liên tục.
+// Chứa danh sách các cấu hình tìm kiếm hiện tại (kèm telegramId của user sở hữu)
 let activeCategories = [];
+
+// --- PERSISTENT BROWSER: Giữ 1 browser instance xuyên suốt thay vì mở/đóng liên tục ---
+let persistentBrowser = null;
 
 /**
  * Tín hiệu (Signal) để Crawler tải lại danh sách Category từ DB vào RAM.
  * Hàm này được gọi từ category.service.js mỗi khi người dùng Thêm/Sửa/Xóa.
+ * ✅ FIX BUG #1: Load kèm user.telegramId để gửi đúng người
+ * ✅ FIX BUG #2: Chỉ load category của user chưa hết hạn
+ * ✅ OPT #1: Preload ItemManager cache chống spam khi Render restart
  */
 export async function triggerReloadCategories() {
     try {
         console.log("🔄 [Worker] Nhận tín hiệu, đang tải lại Categories từ Database...");
         activeCategories = await prisma.category.findMany({
-            where: { isActive: true },
+            where: {
+                isActive: true,
+                // ✅ FIX BUG #2: Loại trừ category của user đã hết hạn
+                user: {
+                    expiredAt: { gt: new Date() }
+                }
+            },
             orderBy: { id: 'desc' },
             select: {
                 id: true,
@@ -39,10 +48,20 @@ export async function triggerReloadCategories() {
                 status: true,
                 brandId: true,
                 priceMin: true,
-                priceMax: true
+                priceMax: true,
+                // ✅ FIX BUG #1: Load telegramId của user sở hữu category
+                user: {
+                    select: { telegramId: true }
+                }
             }
         });
         console.log(`✅ [Worker] Đã tải ${activeCategories.length} Categories vào RAM.`);
+
+        // ✅ OPT #1: Preload cache cho từng category để chống spam khi server restart
+        for (const cat of activeCategories) {
+            await itemManagerService.preloadCache(cat.id);
+        }
+        console.log(`✅ [Worker] Đã preload cache cho ${activeCategories.length} categories.`);
     } catch (error) {
         console.error("❌ [Worker] Lỗi tải Categories:", error);
     }
@@ -60,7 +79,6 @@ const randomDelay = (min = 3000, max = 7000) => new Promise(res => setTimeout(re
  */
 function buildSearchUrl(category) {
     const params = new URLSearchParams();
-    // Đã chuyển camelCase theo Prisma schema
     params.set('category_id', category.categoryId);
     params.set('sort', 'created_time');
     params.set('order', 'desc');
@@ -85,6 +103,32 @@ function buildSearchUrl(category) {
     return `https://jp.mercari.com/search?${params.toString()}`;
 }
 
+/**
+ * Lấy hoặc tạo Browser instance (Persistent - không mở/đóng mỗi vòng)
+ * ✅ OPT #2: Giữ 1 browser xuyên suốt, giảm CPU + RAM overhead
+ */
+async function getOrCreateBrowser() {
+    // Nếu browser đã tồn tại và còn kết nối → dùng lại
+    if (persistentBrowser && persistentBrowser.isConnected()) {
+        return persistentBrowser;
+    }
+    // Launch browser mới với cấu hình tối ưu RAM cho Render
+    console.log("🌐 [Worker] Đang khởi tạo Browser mới...");
+    persistentBrowser = await chromium.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            // Giới hạn RAM cho Chromium (~128MB thay vì mặc định ~300MB+)
+            '--js-flags=--max-old-space-size=128',
+            '--single-process'
+        ]
+    });
+    return persistentBrowser;
+}
+
 export async function startCrawlerLoop() {
     if (!isRunning) return;
 
@@ -95,14 +139,10 @@ export async function startCrawlerLoop() {
     }
 
     console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${activeCategories.length} Category...`);
-    let browser = null;
 
     try {
-        // 1. Launch Browser tối ưu RAM (headless mode)
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
+        // ✅ OPT: Dùng persistent browser thay vì mở/đóng mỗi vòng
+        const browser = await getOrCreateBrowser();
         const context = await browser.newContext();
         const page = await context.newPage();
 
@@ -117,7 +157,7 @@ export async function startCrawlerLoop() {
         });
 
         let exchangeRate = null;
-        let currentCategoryId = null; // Biến tạm giúp Response Listener biết nó thuộc Category nào
+        let currentCategory = null; // ✅ Giữ reference toàn bộ category (kèm user.telegramId)
 
         // Bắt API response ngầm để lấy data
         page.on('response', async (response) => {
@@ -129,17 +169,17 @@ export async function startCrawlerLoop() {
                 } catch (e) { }
             }
 
-            // Bắt kết quả tìm kiếm sản phẩm (bắt buộc phải có currentCategoryId)
-            if (response.url().includes('entities:search') && currentCategoryId != null) {
+            // Bắt kết quả tìm kiếm sản phẩm (bắt buộc phải có currentCategory)
+            if (response.url().includes('entities:search') && currentCategory != null) {
                 try {
                     const data = await response.json();
                     if (data && data.items) {
                         for (const item of data.items) {
                             if (item.status === 'ITEM_STATUS_ON_SALE') {
-                                
-                                // TÍCH HỢP ITEM MANAGER: 
+
+                                // TÍCH HỢP ITEM MANAGER:
                                 // O(1) Check Cache -> Lưu DB (Composite Key) -> Xóa Sliding Window
-                                const isNewItem = await itemManagerService.processNewItem(currentCategoryId, item.id);
+                                const isNewItem = await itemManagerService.processNewItem(currentCategory.id, item.id);
 
                                 if (isNewItem) {
                                     const priceJPY = item.price;
@@ -152,50 +192,82 @@ export async function startCrawlerLoop() {
                                     }
                                     console.log(`   Link: https://jp.mercari.com/item/${item.id}`);
 
-                                    // Uncomment để chạy bot thật:
-                                    // bot.sendMessage(process.env.TELEGRAM_CHAT_ID, `🔥 MỚI: ${item.name} - ${priceJPY} JPY\nhttps://jp.mercari.com/item/${item.id}`);
+                                    // ✅ FIX BUG #1: Gửi Telegram đúng cho user sở hữu category
+                                    const telegramId = currentCategory.user?.telegramId;
+                                    if (telegramId) {
+                                        const priceText = exchangeRate
+                                            ? `${priceJPY.toLocaleString('ja-JP')} JPY (~ ${(priceJPY * exchangeRate).toLocaleString('vi-VN')} VNĐ)`
+                                            : `${priceJPY.toLocaleString('ja-JP')} JPY`;
+                                        
+                                        bot.sendMessage(telegramId, 
+                                            `🔥 MỚI: ${item.name}\n💰 Giá: ${priceText}\n🔗 https://jp.mercari.com/item/${item.id}`
+                                        ).catch(err => console.error(`❌ Lỗi gửi Telegram cho ${telegramId}:`, err.message));
+                                    }
                                 }
                             }
                         }
                     }
                 } catch (e) {
-                    // Ignore JSON parsing errors for partial responses
+                    // Bỏ qua lỗi JSON parsing cho các partial responses
                 }
             }
         });
 
-        // 2. Lặp qua các cấu hình Category trên 1 Tab duy nhất
+        // Lặp qua các cấu hình Category trên 1 Tab duy nhất
         for (const category of activeCategories) {
-            currentCategoryId = category.id; // Gán ID để Listener dùng lưu Item Manager
+            currentCategory = category; // ✅ Gán toàn bộ object (kèm user.telegramId)
             const searchUrl = buildSearchUrl(category);
             console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
             try {
-                await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
-                // Đợi Mercari API trả về kết quả
-                await page.waitForTimeout(10000);
+                // ✅ OPT #2: Dùng waitForResponse thay vì waitForTimeout(10000) để tiết kiệm CPU
+                await Promise.race([
+                    (async () => {
+                        await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+                        // Chờ API trả về kết quả tìm kiếm (tối đa 15s)
+                        await page.waitForResponse(
+                            resp => resp.url().includes('entities:search'),
+                            { timeout: 15000 }
+                        );
+                        // Chờ thêm 2s để listener xử lý xong response
+                        await new Promise(r => setTimeout(r, 2000));
+                    })(),
+                    // Timeout tổng 20s phòng trường hợp API không trả về
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 20000))
+                ]);
             } catch (err) {
-                console.log(`⚠️ Lỗi mạng khi quét ${searchUrl}, bỏ qua...`);
+                console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
             }
 
-            // Random delay giữa các lần tìm kiếm
+            // Random delay giữa các lần tìm kiếm (chống block IP)
             await randomDelay(3000, 6000);
         }
+
+        // Đóng context (tab) sau mỗi vòng, nhưng GIỮ browser
+        await context.close();
     } catch (error) {
         console.error('❌ [Worker] Lỗi Crawler:', error);
-    } finally {
-        // 3. Đóng Browser ngay sau khi vòng lặp hoàn thành để giải phóng RAM
-        if (browser) {
-            await browser.close();
+        // Nếu browser bị crash, reset persistent browser
+        if (persistentBrowser) {
+            try { await persistentBrowser.close(); } catch (e) { }
+            persistentBrowser = null;
         }
     }
 
-    // 4. Lên lịch chạy lượt tiếp theo sau 10 giây
+    // Lên lịch chạy lượt tiếp theo sau 10 giây
     console.log("⏳ [Worker] Đã xong 1 vòng. Nghỉ 10s giải nhiệt...");
     setTimeout(startCrawlerLoop, 10000);
 }
 
-export function stopCrawler() {
+/**
+ * ✅ OPT #3: Graceful Shutdown - Dừng crawler và đóng browser sạch sẽ
+ */
+export async function stopCrawler() {
     isRunning = false;
     console.log("🛑 [Worker] Crawler đã bị dừng.");
+    // Đóng persistent browser nếu còn
+    if (persistentBrowser) {
+        try { await persistentBrowser.close(); } catch (e) { }
+        persistentBrowser = null;
+    }
 }

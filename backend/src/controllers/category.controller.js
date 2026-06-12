@@ -25,13 +25,9 @@ export const addCategoryController = async (req, res) => {
         // Ủy quyền toàn bộ xử lý nghiệp vụ cho Service
         const newCategory = await categoryService.addCategory(userId, req.body);
 
-        // Lấy lại danh sách mới nhất sau khi thêm
-        const categories = await categoryService.getAllCategories(userId);
-
         return res.status(201).json({
             message: "Thêm Category thành công!",
             category: newCategory,
-            categories
         });
 
     } catch (error) {
@@ -51,11 +47,10 @@ export const deleteCategoryController = async (req, res) => {
         await categoryService.deleteCategory(req.params.id, userId);
 
         // Lấy lại danh sách sau khi xóa
-        const categories = await categoryService.getAllCategories(userId);
 
         return res.status(200).json({
             message: "Xóa Category thành công!",
-            categories
+            id: req.params.id
         });
     } catch (error) {
         if (error.message === "MISSING_ID") {
@@ -65,6 +60,26 @@ export const deleteCategoryController = async (req, res) => {
             return res.status(404).json({ error: "Không tìm thấy Category với ID này!" });
         }
         console.error('[Category] DELETE error:', error);
+        return res.status(500).json({ error: "Lỗi server" });
+    }
+};
+
+// UPDATE: Cập nhật Category tìm kiếm theo ID
+export const updateCategoryController = async (req, res) => {
+    try {
+        const userId = req.user?.id || TEMP_USER_ID;
+        await categoryService.updateCategory(req.params.id, userId, req.body);
+        return res.status(200).json({
+            message: "Cập nhật Category thành công!",
+        });
+    } catch (error) {
+        if (error.message === "MISSING_ID") {
+            return res.status(400).json({ error: "Vui lòng cung cấp ID cần cập nhật!" });
+        }
+        if (error.message === "NOT_FOUND") {
+            return res.status(404).json({ error: "Không tìm thấy Category với ID này!" });
+        }
+        console.error('[Category] UPDATE error:', error);
         return res.status(500).json({ error: "Lỗi server" });
     }
 };

@@ -1,5 +1,5 @@
 import categoryRoutes from '../routes/category.routes.js';
-import ApiError from '../utils/ApiError.js';
+import userRoutes from '../routes/user.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng
@@ -8,6 +8,7 @@ import ApiError from '../utils/ApiError.js';
 export const setupRoutes = (app) => {
     // --- Routes Mounting ---
     app.use('/api/categories', categoryRoutes);
+    app.use('/api/users', userRoutes);
 
 
     // Route mặc định kiểm tra server

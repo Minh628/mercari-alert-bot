@@ -30,6 +30,7 @@ export async function triggerReloadCategories() {
     try {
         console.log("🔄 [Worker] Nhận tín hiệu, đang tải lại Categories từ Database...");
         activeCategories = await prisma.category.findMany({
+            where: { isActive: true },
             orderBy: { id: 'desc' },
             select: {
                 id: true,

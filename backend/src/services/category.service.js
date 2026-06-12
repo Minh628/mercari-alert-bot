@@ -78,4 +78,35 @@ export const deleteCategory = async (id, userId) => {
     triggerReloadCategories();
 
     return category;
+};  
+
+/**
+ * Cập nhật một Category theo ID (đảm bảo đúng userId để tránh xóa nhầm của user khác)
+ * @param {number} id - ID của category cần cập nhật (autoincrement)
+ * @param {number} userId - ID của User sở hữu
+ * @param {Object} data - Dữ liệu category từ request body
+ * @returns {Promise<Object>} Category đã được cập nhật
+ */
+export const updateCategory = async (id, userId, data) => {
+    if (!id) {
+        throw new Error("MISSING_ID");
+    }
+
+    const category = await prisma.category.findFirst({
+        where: { id: Number(id), userId },
+        select: { id: true }
+    });
+
+    if (!category) {
+        throw new Error("NOT_FOUND");
+    }
+
+    await prisma.category.update({
+        where: { id: Number(id) },
+        data: data
+    });
+
+    triggerReloadCategories();
+
+    return category;
 };

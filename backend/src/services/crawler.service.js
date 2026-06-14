@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import TelegramBot from 'node-telegram-bot-api';
+import telegramBotService from './telegramBot.service.js';
 // Sử dụng Prisma trực tiếp thay cho file JSON cũ
 import prisma from '../config/prisma.js';
 // Tích hợp Item Manager để tối ưu bộ nhớ và DB (Sliding Window)
@@ -9,9 +9,6 @@ import itemManagerService from './itemManager.service.js';
 
 dotenv.config({ quiet: true });
 chromium.use(stealth());
-
-// ✅ FIX BUG #3: Đổi TELEGRAM_BOT_TOKEN → TELEGRAM_TOKEN cho khớp .env
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: false });
 
 let isRunning = true;
 
@@ -158,6 +155,8 @@ export async function startCrawlerLoop() {
 
         let exchangeRate = null;
         let currentCategory = null; // ✅ Giữ reference toàn bộ category (kèm user.telegramId)
+        let newItemsBatch = []; // Mảng hứng data để gom mẻ (Batching)
+        let isColdStart = false; // Cờ nhận diện Khởi động nguội
 
         // Bắt API response ngầm để lấy data
         page.on('response', async (response) => {
@@ -184,24 +183,19 @@ export async function startCrawlerLoop() {
                                 if (isNewItem) {
                                     const priceJPY = item.price;
                                     console.log(`✈️ [Mới] ${item.name}`);
-                                    if (exchangeRate) {
-                                        const priceVND = priceJPY * exchangeRate;
-                                        console.log(`   Giá: ${priceJPY.toLocaleString('ja-JP')} JPY (~ ${priceVND.toLocaleString('vi-VN')} VNĐ)`);
-                                    } else {
-                                        console.log(`   Giá: ${priceJPY.toLocaleString('ja-JP')} JPY`);
-                                    }
-                                    console.log(`   Link: https://jp.mercari.com/item/${item.id}`);
 
-                                    // ✅ FIX BUG #1: Gửi Telegram đúng cho user sở hữu category
-                                    const telegramId = currentCategory.user?.telegramId;
-                                    if (telegramId) {
-                                        const priceText = exchangeRate
-                                            ? `${priceJPY.toLocaleString('ja-JP')} JPY (~ ${(priceJPY * exchangeRate).toLocaleString('vi-VN')} VNĐ)`
-                                            : `${priceJPY.toLocaleString('ja-JP')} JPY`;
-                                        
-                                        bot.sendMessage(telegramId, 
-                                            `🔥 MỚI: ${item.name}\n💰 Giá: ${priceText}\n🔗 https://jp.mercari.com/item/${item.id}`
-                                        ).catch(err => console.error(`❌ Lỗi gửi Telegram cho ${telegramId}:`, err.message));
+                                    // 🌟 KHỞI ĐỘNG NGUỘI VÀ GOM MẺ
+                                    // Nếu đang trong lượt Khởi động nguội (isColdStart = true)
+                                    // thì KHÔNG làm gì thêm, itemManagerService.processNewItem đã âm thầm nạp nó vào RAM/DB rồi.
+                                    if (!isColdStart) {
+                                        // Ghi nhận món hàng mới vào mảng để chờ Batching gửi tin 1 lần
+                                        newItemsBatch.push({
+                                            id: item.id,
+                                            name: item.name,
+                                            price: priceJPY,
+                                            brandName: item.itemBrand?.name || item.itemBrand?.subName || '',
+                                            size: item.itemSizes?.[0]?.name || item.itemSize?.name || ''
+                                        });
                                     }
                                 }
                             }
@@ -216,6 +210,16 @@ export async function startCrawlerLoop() {
         // Lặp qua các cấu hình Category trên 1 Tab duy nhất
         for (const category of activeCategories) {
             currentCategory = category; // ✅ Gán toàn bộ object (kèm user.telegramId)
+            newItemsBatch = []; // Reset mảng gom mẻ cho Category mới
+            
+            // Kiểm tra dung lượng RAM hiện tại để xác định Khởi Động Nguội
+            const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
+            isColdStart = (cacheSize === 0);
+            
+            if (isColdStart) {
+                console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
+            }
+
             const searchUrl = buildSearchUrl(category);
             console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
@@ -237,6 +241,36 @@ export async function startCrawlerLoop() {
                 ]);
             } catch (err) {
                 console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
+            }
+
+            // --- BATCHING: Gửi Telegram Gom Mẻ ---
+            if (!isColdStart && newItemsBatch.length > 0) {
+                const telegramId = currentCategory.user?.telegramId;
+                if (telegramId) {
+                    // Tạo thông điệp gom mẻ
+                    let messageText = `🔥 [MỚI] Tìm thấy ${newItemsBatch.length} món cho "${category.categoryId}":\n\n`;
+                    
+                    newItemsBatch.forEach((item, index) => {
+                        const priceVND = exchangeRate ? Math.round(item.price * exchangeRate) : null;
+                        const priceText = priceVND ? `${item.price.toLocaleString('ja-JP')}¥ (~${priceVND.toLocaleString('vi-VN')}đ)` : `${item.price.toLocaleString('ja-JP')}¥`;
+                        const brandInfo = item.brandName ? ` - *${item.brandName}*` : '';
+                        const sizeInfo = item.size ? ` (Size: ${item.size})` : '';
+
+                        messageText += `${index + 1}. ${item.name}${brandInfo}${sizeInfo}\n`;
+                        messageText += `💰 Giá: ${priceText}\n`;
+                        messageText += `🔗 [Xem ngay](https://jp.mercari.com/item/${item.id})\n\n`;
+                    });
+
+                    // Gọi Singleton Telegram Bot gửi 1 tin duy nhất
+                    telegramBotService.sendMessage(telegramId, messageText, {
+                        parse_mode: 'Markdown',
+                        disable_web_page_preview: false // Tự động hiển thị thumbnail của link đầu tiên
+                    });
+                    
+                    console.log(`📲 Đã gửi Batching ${newItemsBatch.length} món cho Telegram ${telegramId}`);
+                }
+            } else if (isColdStart) {
+                console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
             }
 
             // Random delay giữa các lần tìm kiếm (chống block IP)

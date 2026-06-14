@@ -1,5 +1,6 @@
 import prisma from '../config/prisma.js';
 import { triggerReloadCategories } from './crawler.service.js';
+import itemManagerService from './itemManager.service.js';
 
 /**
  * Lấy danh sách toàn bộ Category của một User
@@ -105,6 +106,17 @@ export const updateCategory = async (id, userId, data) => {
         where: { id: Number(id) },
         data: data
     });
+
+    // Nếu khách hàng Tắt Bot (isActive = false), áp dụng HARD RESET:
+    // Xóa sạch RAM và DB (Background Task) để dọn rác và ép Khởi Động Nguội cho lần sau.
+    if (data.isActive === false) {
+        itemManagerService.clearCache(Number(id));
+        
+        // Chạy ngầm (không await) để API phản hồi tức thì cho frontend
+        prisma.item.deleteMany({
+            where: { categoryId: Number(id) }
+        }).catch(err => console.error(`❌ Lỗi dọn rác DB cho category ${id}:`, err));
+    }
 
     triggerReloadCategories();
 

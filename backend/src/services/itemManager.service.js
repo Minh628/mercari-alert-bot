@@ -5,7 +5,7 @@ class ItemManagerService {
     // RAM Cache: Map<CategoryId, Set<ItemId>>
     // Sử dụng Set để O(1) lookup và kiểm tra số lượng (size) nhanh chóng.
     this.cache = new Map();
-    
+
     // Cờ báo hiệu quá trình xóa (evict) đang diễn ra cho từng category.
     // Tránh trường hợp gọi quá trình xóa nhiều lần đồng thời dẫn đến race condition (Thread-safe).
     this.isEvicting = new Map(); // Map<CategoryId, Boolean>
@@ -62,7 +62,7 @@ class ItemManagerService {
       // Đảm bảo tại một thời điểm chỉ có 1 tiến trình evict cho mỗi category
       if (!this.isEvicting.get(categoryId)) {
         this.isEvicting.set(categoryId, true);
-        
+
         // Tiến trình evict chạy ngầm (write-behind), không block thời gian trả về của hàm.
         this._evictOldItems(categoryId, categoryCache)
           .catch(err => console.error(`[ItemManager] Lỗi evict cho category ${categoryId}:`, err))
@@ -77,16 +77,20 @@ class ItemManagerService {
   }
 
   /**
-   * Xóa 9850 items cũ nhất khỏi DB & RAM (Composite Key: cần cả id + categoryId để xóa)
+   * Xóa các items cũ nhất khỏi DB & RAM (Đưa tổng số lượng về mức an toàn 150)
    * @param {number} categoryId 
    * @param {Set<string>} categoryCache 
    */
   async _evictOldItems(categoryId, categoryCache) {
-    // Truy vấn DB lấy 9850 items có thời gian tạo cũ nhất (tận dụng @@index([categoryId, createdAt]))
+    // Tính số lượng cần xóa để RAM và DB hạ xuống mốc 150 (trừ hao phình to nếu có).
+    const deleteCount = Math.max(0, categoryCache.size - 150);
+    if (deleteCount === 0) return;
+
+    // Lấy `deleteCount` items cũ nhất của riêng categoryId này để xóa (tận dụng @@index)
     const oldestItems = await prisma.item.findMany({
       where: { categoryId: categoryId },
       orderBy: { createdAt: 'asc' },
-      take: 9850,
+      take: deleteCount,
       select: { id: true }
     });
 
@@ -111,22 +115,43 @@ class ItemManagerService {
 
   /**
    * Nạp (preload) cache từ DB vào RAM khi server khởi động.
-   * Giúp chống cold start (khi khởi động lại, cache trống dễ gây lặp thông báo).
+   * Giúp chống cold start và đồng bộ số lượng RAM so với DB hiện tại.
    * @param {number} categoryId 
    */
   async preloadCache(categoryId) {
-    // Chỉ lấy 1000 item gần nhất
+    // Lấy TOÀN BỘ items của category này. Giúp RAM biết được trọn vẹn số lượng của DB.
     const items = await prisma.item.findMany({
       where: { categoryId: categoryId },
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
       select: { id: true }
     });
-    
+
     this._initCache(categoryId);
     const categoryCache = this.cache.get(categoryId);
     for (const item of items) {
       categoryCache.add(item.id);
+    }
+
+    // Tự động dọn dẹp nếu phát hiện DB đã bị phình to (vượt 10000) từ các phiên trước
+    if (categoryCache.size > 10000) {
+      if (!this.isEvicting.get(categoryId)) {
+        this.isEvicting.set(categoryId, true);
+        this._evictOldItems(categoryId, categoryCache)
+          .catch(err => console.error(`[ItemManager] Lỗi dọn dẹp DB lúc khởi động category ${categoryId}:`, err))
+          .finally(() => {
+            this.isEvicting.set(categoryId, false);
+          });
+      }
+    }
+  }
+
+  /**
+   * Khởi động nguội: Xóa sạch bộ đệm RAM của category này khi người dùng tắt (Pause)
+   * Để lần sau bật lại (Resume), hệ thống sẽ tính là lượt đầu tiên và im lặng cào lại DB
+   * @param {number} categoryId 
+   */
+  clearCache(categoryId) {
+    if (this.cache.has(categoryId)) {
+      this.cache.delete(categoryId);
     }
   }
 }

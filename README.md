@@ -104,6 +104,18 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
+### [2026-06-14] Nâng cấp Kiến trúc Chịu tải Enterprise
+- **FEAT**: Áp dụng cơ chế **Khởi động nguội (Cold Start)**: Tự động xóa RAM khi Pause (`isActive=false`). Lượt quét tiếp theo sẽ coi là mốc khởi điểm và hoàn toàn im lặng, không spam Telegram.
+- **FEAT**: Triển khai cơ chế **Gom mẻ (Batching)**: Gom tất cả items mới trong 1 lượt cào thành 1 tin nhắn tổng hợp. Chống Rate Limit 429 tuyệt đối cho các từ khóa "siêu nóng" (10s/5 món).
+
+### [2026-06-14] Tích hợp Telegram Bot (Lấy Telegram ID)
+- **FEAT**: Xây dựng tiến trình `TelegramBotService` chạy nền độc lập với Crawler.
+- **FEAT**: Bot hỗ trợ tính năng Polling, tự động trả lời mã `telegramId` khi người dùng chat lệnh `/start` hoặc `/myid`.
+
+### [2026-06-14] Đồng bộ RAM Cache & Database
+- **FIX**: Nạp toàn bộ ID vào RAM lúc khởi động để chống lệch đếm khi Render restart (`ItemManager.preloadCache`).
+- **OPT**: Sửa công thức dọn dẹp Database linh hoạt theo `cache.size - 150` thay vì xóa cố định 9850, dứt điểm lỗi phình to DB.
+
 ### [2026-06-12] Setup Môi trường Deploy (Docker & Vercel)
 - **FEAT**: Sửa URL API của Frontend thành biến môi trường `VITE_API_URL` để gọi API động trên Vercel.
 - **NEW**: Thêm `Dockerfile` cho Backend. Tự động xử lý lệnh `npx playwright install --with-deps` để sửa lỗi thiếu thư viện hệ điều hành của Playwright trên Render.

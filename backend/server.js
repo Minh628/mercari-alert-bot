@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import app from './src/app.js';
 import { startCrawlerLoop, stopCrawler } from './src/services/crawler.service.js';
+import telegramBotService from './src/services/telegramBot.service.js';
 import prisma from './src/config/prisma.js';
 
 // Load biến môi trường
@@ -17,6 +18,9 @@ const server = app.listen(PORT, () => {
     startCrawlerLoop().catch(err => {
         console.error('❌ Cỗ máy Crawler gặp sự cố:', err);
     });
+
+    // Kích hoạt Telegram Bot lắng nghe tin nhắn để hỗ trợ User lấy ID
+    telegramBotService.startListening();
 });
 
 // ✅ OPT #3: Graceful Shutdown - Tắt sạch sẽ khi Render gửi tín hiệu SIGTERM
@@ -25,6 +29,9 @@ const gracefulShutdown = async (signal) => {
     
     // 1. Dừng crawler + đóng browser
     await stopCrawler();
+
+    // 1.5 Dừng Bot Telegram lắng nghe
+    telegramBotService.stopListening();
     
     // 2. Đóng kết nối DB
     await prisma.$disconnect();

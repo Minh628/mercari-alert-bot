@@ -105,34 +105,12 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 ## 📋 Thay đổi gần đây
 
 ### [2026-06-14] Nâng cấp Kiến trúc Chịu tải Enterprise
+- **FIX**: Xử lý lỗi `400 Bad Request: message is too long` của Telegram bằng cơ chế Cắt tin nhắn (Chunking). Giới hạn mỗi tin nhắn chỉ chứa 20 món hàng, tự động ngắt nghỉ 1s giữa các tin chống block.
+- **OPT**: Refactor toàn diện `crawler.service.js`: Chẻ nhỏ siêu hàm `startCrawlerLoop` thành các module độc lập `scanSingleCategory` và `sendBatchTelegram`, tối ưu hóa hiệu suất và dễ bảo trì.
+- **FIX**: Xử lý triệt để lỗi Closure Leak & Race Condition: Bỏ hoàn toàn `page.on`, chuyển sang cơ chế Đồng bộ cục bộ (`waitForResponse`). Đảm bảo không bao giờ gửi nhầm khách hàng và không miss item.
 - **FEAT**: Áp dụng cơ chế **Khởi động nguội (Cold Start)**: Tự động xóa RAM khi Pause (`isActive=false`). Lượt quét tiếp theo sẽ coi là mốc khởi điểm và hoàn toàn im lặng, không spam Telegram.
 - **FEAT**: Triển khai cơ chế **Gom mẻ (Batching)**: Gom tất cả items mới trong 1 lượt cào thành 1 tin nhắn tổng hợp. Chống Rate Limit 429 tuyệt đối cho các từ khóa "siêu nóng" (10s/5 món).
 
-### [2026-06-14] Tích hợp Telegram Bot (Lấy Telegram ID)
-- **FEAT**: Xây dựng tiến trình `TelegramBotService` chạy nền độc lập với Crawler.
-- **FEAT**: Bot hỗ trợ tính năng Polling, tự động trả lời mã `telegramId` khi người dùng chat lệnh `/start` hoặc `/myid`.
-
-### [2026-06-14] Đồng bộ RAM Cache & Database
-- **FIX**: Nạp toàn bộ ID vào RAM lúc khởi động để chống lệch đếm khi Render restart (`ItemManager.preloadCache`).
-- **OPT**: Sửa công thức dọn dẹp Database linh hoạt theo `cache.size - 150` thay vì xóa cố định 9850, dứt điểm lỗi phình to DB.
-
-### [2026-06-12] Setup Môi trường Deploy (Docker & Vercel)
-- **FEAT**: Sửa URL API của Frontend thành biến môi trường `VITE_API_URL` để gọi API động trên Vercel.
-- **NEW**: Thêm `Dockerfile` cho Backend. Tự động xử lý lệnh `npx playwright install --with-deps` để sửa lỗi thiếu thư viện hệ điều hành của Playwright trên Render.
-- **NEW**: Thêm `.dockerignore` tối ưu dung lượng ảnh build.
-
-### [2026-06-12] Fix Bug & Tối ưu Render
-- **FIX**: Crawler gửi Telegram đúng `telegramId` của user sở hữu category (multi-user safe).
-- **FIX**: Chặn user hết hạn (`expiredAt`) khỏi đăng nhập và sử dụng API. Crawler cũng bỏ qua category của user hết hạn.
-- **FIX**: Tên biến `.env` (`TELEGRAM_TOKEN`) đồng bộ với code.
-- **OPT**: Preload ItemManager cache khi khởi động — chống spam Telegram khi server restart.
-- **OPT**: Playwright dùng Persistent Browser + `waitForResponse` thay `waitForTimeout` — giảm RAM & CPU.
-- **OPT**: Graceful Shutdown — tắt browser + DB sạch sẽ khi nhận SIGTERM.
-- **FEAT**: Health Check endpoint `GET /health` — dùng UptimeRobot ping chống Render Sleep.
-- **FEAT**: Helmet (bảo vệ HTTP headers) + Rate Limiting (100 req/15min/IP).
-- **NEW**: Middleware `expiry.middleware.js` kiểm tra tài khoản hết hạn.
-
----
 
 ## 🚀 Hướng dẫn Deploy Lên Production
 

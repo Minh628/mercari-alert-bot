@@ -27,17 +27,16 @@ const server = app.listen(PORT, () => {
 const gracefulShutdown = async (signal) => {
     console.log(`\n🛑 Nhận tín hiệu ${signal}, đang tắt server sạch sẽ...`);
     
-    // 1. Dừng crawler + đóng browser
-    await stopCrawler();
-
-    // 1.5 Dừng Bot Telegram lắng nghe
-    telegramBotService.stopListening();
+    // Chạy song song 3 tác vụ Shutdown để tránh Deadlock do Windows Console kill tiến trình con
+    await Promise.allSettled([
+        stopCrawler().catch(e => console.log('⚠️ [Crawler Shutdown Lỗi]:', e.message)),
+        telegramBotService.stopListening().catch(e => console.log('⚠️ [Telegram Shutdown Lỗi]:', e.message)),
+        prisma.$disconnect()
+            .then(() => console.log('✅ Đã đóng kết nối Database.'))
+            .catch(e => console.log('⚠️ [DB Shutdown Lỗi]:', e.message))
+    ]);
     
-    // 2. Đóng kết nối DB
-    await prisma.$disconnect();
-    console.log('✅ Đã đóng kết nối Database.');
-    
-    // 3. Đóng HTTP server
+    // Đóng HTTP server
     server.close(() => {
         console.log('✅ Server đã tắt hoàn toàn.');
         process.exit(0);

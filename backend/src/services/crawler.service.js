@@ -11,6 +11,7 @@ dotenv.config({ quiet: true });
 chromium.use(stealth());
 
 let isRunning = true;
+let isCrawling = false;
 
 // --- BIẾN RAM NỘI BỘ (Event-Driven Cache) ---
 // Chứa danh sách các cấu hình tìm kiếm hiện tại (kèm telegramId của user sở hữu)
@@ -18,6 +19,7 @@ let activeCategories = [];
 
 // --- PERSISTENT BROWSER: Giữ 1 browser instance xuyên suốt thay vì mở/đóng liên tục ---
 let persistentBrowser = null;
+let exchangeRate = null; // Cache global tỷ giá VNĐ
 
 /**
  * Tín hiệu (Signal) để Crawler tải lại danh sách Category từ DB vào RAM.
@@ -113,6 +115,9 @@ async function getOrCreateBrowser() {
     console.log("🌐 [Worker] Đang khởi tạo Browser mới...");
     persistentBrowser = await chromium.launch({
         headless: true,
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -126,6 +131,106 @@ async function getOrCreateBrowser() {
     return persistentBrowser;
 }
 
+/**
+ * Tách biệt logic gửi Telegram Gom Mẻ (Batching)
+ * Xử lý cắt nhỏ tin nhắn nếu mảng items quá lớn (Tránh lỗi 400 Bad Request Telegram)
+ */
+async function sendBatchTelegram(items, category, telegramId) {
+    const chunkSize = 10; // Giới hạn 10 món / 1 tin nhắn để tránh lỗi 400 Message too long của Telegram
+    for (let i = 0; i < items.length; i += chunkSize) {
+        const chunk = items.slice(i, i + chunkSize);
+        let messageText = `🔥 [MỚI] Tìm thấy ${chunk.length} món cho "${category.categoryId}":\n\n`;
+        
+        chunk.forEach((item, index) => {
+            const priceVND = exchangeRate ? Math.round(item.price * exchangeRate) : null;
+            const priceText = priceVND ? `${item.price.toLocaleString('ja-JP')}¥ (~${priceVND.toLocaleString('vi-VN')}đ)` : `${item.price.toLocaleString('ja-JP')}¥`;
+            const brandInfo = item.brandName ? ` - *${item.brandName}*` : '';
+            const sizeInfo = item.size ? ` (Size: ${item.size})` : '';
+
+            messageText += `${i + index + 1}. ${item.name}${brandInfo}${sizeInfo}\n`;
+            messageText += `💰 Giá: ${priceText}\n`;
+            messageText += `🔗 [Xem ngay](https://jp.mercari.com/item/${item.id})\n\n`;
+        });
+
+        // Gọi Singleton Telegram Bot gửi tin
+        await telegramBotService.sendMessage(telegramId, messageText, {
+            parse_mode: 'Markdown',
+            disable_web_page_preview: false
+        });
+        
+        // Nghỉ 1s giữa các tin nhắn để chống Rate limit
+        if (i + chunkSize < items.length) {
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+    console.log(`📲 Đã gửi Batching ${items.length} món cho Telegram ${telegramId}`);
+}
+
+/**
+ * Tách biệt logic cào dữ liệu cho 1 Category duy nhất
+ */
+async function scanSingleCategory(page, category) {
+    const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
+    const isColdStart = (cacheSize === 0);
+
+    if (isColdStart) {
+        console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
+    }
+
+    const searchUrl = buildSearchUrl(category);
+    console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
+
+    try {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+        
+        // Chờ API trả về kết quả tìm kiếm. Playwright sẽ ném lỗi nếu quá 15s.
+        const searchResponse = await page.waitForResponse(
+            resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
+            { timeout: 15000 }
+        );
+        
+        const data = await searchResponse.json();
+        if (data && data.items) {
+            let newItemsBatch = [];
+            for (const item of data.items) {
+                if (item.status === 'ITEM_STATUS_ON_SALE') {
+                    const isNewItem = await itemManagerService.processNewItem(category.id, item.id);
+                    if (isNewItem) {
+                        const priceJPY = item.price;
+                        console.log(`✈️ [Mới] ${item.name}`);
+
+                        if (!isColdStart) {
+                            newItemsBatch.push({
+                                id: item.id,
+                                name: item.name,
+                                price: priceJPY,
+                                brandName: item.itemBrand?.name || item.itemBrand?.subName || '',
+                                size: item.itemSizes?.[0]?.name || item.itemSize?.name || ''
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (!isColdStart && newItemsBatch.length > 0) {
+                const telegramId = category.user?.telegramId;
+                console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
+                if (telegramId) {
+                    await sendBatchTelegram(newItemsBatch, category, telegramId);
+                }
+            } else if (isColdStart) {
+                console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
+            }
+        }
+    } catch (err) {
+        // Lỗi timeout (15s) của Playwright hoặc lỗi DB sẽ rơi vào đây, đảm bảo tiến trình dừng hẳn không thành Zombie.
+        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
+    }
+}
+
+/**
+ * Vòng lặp chính của hệ thống Crawler
+ */
 export async function startCrawlerLoop() {
     if (!isRunning) return;
 
@@ -136,9 +241,9 @@ export async function startCrawlerLoop() {
     }
 
     console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${activeCategories.length} Category...`);
+    isCrawling = true;
 
     try {
-        // ✅ OPT: Dùng persistent browser thay vì mở/đóng mỗi vòng
         const browser = await getOrCreateBrowser();
         const context = await browser.newContext();
         const page = await context.newPage();
@@ -153,126 +258,20 @@ export async function startCrawlerLoop() {
             }
         });
 
-        let exchangeRate = null;
-        let currentCategory = null; // ✅ Giữ reference toàn bộ category (kèm user.telegramId)
-        let newItemsBatch = []; // Mảng hứng data để gom mẻ (Batching)
-        let isColdStart = false; // Cờ nhận diện Khởi động nguội
-
-        // Bắt API response ngầm để lấy data
+        // Bắt API response ngầm để lấy tỷ giá VNĐ (Chỉ cần cài 1 lần cho page này)
         page.on('response', async (response) => {
-            // Bắt tỷ giá VNĐ từ API country
             if (response.url().includes('country?country_code=VN')) {
                 try {
                     const data = await response.json();
                     exchangeRate = data?.data?.exchange_rate || data?.exchange_rate || data?.rate || exchangeRate;
                 } catch (e) { }
             }
-
-            // Bắt kết quả tìm kiếm sản phẩm (bắt buộc phải có currentCategory)
-            if (response.url().includes('entities:search') && currentCategory != null) {
-                try {
-                    const data = await response.json();
-                    if (data && data.items) {
-                        for (const item of data.items) {
-                            if (item.status === 'ITEM_STATUS_ON_SALE') {
-
-                                // TÍCH HỢP ITEM MANAGER:
-                                // O(1) Check Cache -> Lưu DB (Composite Key) -> Xóa Sliding Window
-                                const isNewItem = await itemManagerService.processNewItem(currentCategory.id, item.id);
-
-                                if (isNewItem) {
-                                    const priceJPY = item.price;
-                                    console.log(`✈️ [Mới] ${item.name}`);
-
-                                    // 🌟 KHỞI ĐỘNG NGUỘI VÀ GOM MẺ
-                                    // Nếu đang trong lượt Khởi động nguội (isColdStart = true)
-                                    // thì KHÔNG làm gì thêm, itemManagerService.processNewItem đã âm thầm nạp nó vào RAM/DB rồi.
-                                    if (!isColdStart) {
-                                        // Ghi nhận món hàng mới vào mảng để chờ Batching gửi tin 1 lần
-                                        newItemsBatch.push({
-                                            id: item.id,
-                                            name: item.name,
-                                            price: priceJPY,
-                                            brandName: item.itemBrand?.name || item.itemBrand?.subName || '',
-                                            size: item.itemSizes?.[0]?.name || item.itemSize?.name || ''
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // Bỏ qua lỗi JSON parsing cho các partial responses
-                }
-            }
         });
 
         // Lặp qua các cấu hình Category trên 1 Tab duy nhất
         for (const category of activeCategories) {
-            currentCategory = category; // ✅ Gán toàn bộ object (kèm user.telegramId)
-            newItemsBatch = []; // Reset mảng gom mẻ cho Category mới
+            await scanSingleCategory(page, category);
             
-            // Kiểm tra dung lượng RAM hiện tại để xác định Khởi Động Nguội
-            const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
-            isColdStart = (cacheSize === 0);
-            
-            if (isColdStart) {
-                console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
-            }
-
-            const searchUrl = buildSearchUrl(category);
-            console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
-
-            try {
-                // ✅ OPT #2: Dùng waitForResponse thay vì waitForTimeout(10000) để tiết kiệm CPU
-                await Promise.race([
-                    (async () => {
-                        await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
-                        // Chờ API trả về kết quả tìm kiếm (tối đa 15s)
-                        await page.waitForResponse(
-                            resp => resp.url().includes('entities:search'),
-                            { timeout: 15000 }
-                        );
-                        // Chờ thêm 2s để listener xử lý xong response
-                        await new Promise(r => setTimeout(r, 2000));
-                    })(),
-                    // Timeout tổng 20s phòng trường hợp API không trả về
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 20000))
-                ]);
-            } catch (err) {
-                console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
-            }
-
-            // --- BATCHING: Gửi Telegram Gom Mẻ ---
-            if (!isColdStart && newItemsBatch.length > 0) {
-                const telegramId = currentCategory.user?.telegramId;
-                if (telegramId) {
-                    // Tạo thông điệp gom mẻ
-                    let messageText = `🔥 [MỚI] Tìm thấy ${newItemsBatch.length} món cho "${category.categoryId}":\n\n`;
-                    
-                    newItemsBatch.forEach((item, index) => {
-                        const priceVND = exchangeRate ? Math.round(item.price * exchangeRate) : null;
-                        const priceText = priceVND ? `${item.price.toLocaleString('ja-JP')}¥ (~${priceVND.toLocaleString('vi-VN')}đ)` : `${item.price.toLocaleString('ja-JP')}¥`;
-                        const brandInfo = item.brandName ? ` - *${item.brandName}*` : '';
-                        const sizeInfo = item.size ? ` (Size: ${item.size})` : '';
-
-                        messageText += `${index + 1}. ${item.name}${brandInfo}${sizeInfo}\n`;
-                        messageText += `💰 Giá: ${priceText}\n`;
-                        messageText += `🔗 [Xem ngay](https://jp.mercari.com/item/${item.id})\n\n`;
-                    });
-
-                    // Gọi Singleton Telegram Bot gửi 1 tin duy nhất
-                    telegramBotService.sendMessage(telegramId, messageText, {
-                        parse_mode: 'Markdown',
-                        disable_web_page_preview: false // Tự động hiển thị thumbnail của link đầu tiên
-                    });
-                    
-                    console.log(`📲 Đã gửi Batching ${newItemsBatch.length} món cho Telegram ${telegramId}`);
-                }
-            } else if (isColdStart) {
-                console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
-            }
-
             // Random delay giữa các lần tìm kiếm (chống block IP)
             await randomDelay(3000, 6000);
         }
@@ -288,6 +287,9 @@ export async function startCrawlerLoop() {
         }
     }
 
+    isCrawling = false;
+    if (!isRunning) return;
+
     // Lên lịch chạy lượt tiếp theo sau 10 giây
     console.log("⏳ [Worker] Đã xong 1 vòng. Nghỉ 10s giải nhiệt...");
     setTimeout(startCrawlerLoop, 10000);
@@ -299,7 +301,7 @@ export async function startCrawlerLoop() {
 export async function stopCrawler() {
     isRunning = false;
     console.log("🛑 [Worker] Crawler đã bị dừng.");
-    // Đóng persistent browser nếu còn
+    // Đóng persistent browser nếu còn, chặn deadlock 3s
     if (persistentBrowser) {
         try { await persistentBrowser.close(); } catch (e) { }
         persistentBrowser = null;

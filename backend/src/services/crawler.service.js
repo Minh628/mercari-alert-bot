@@ -9,6 +9,13 @@ import itemManagerService from './itemManager.service.js';
 dotenv.config({ quiet: true });
 chromium.use(stealth());
 
+// --- CẤU HÌNH HẰNG SỐ (CONSTANTS) ---
+const CRAWLER_TIMEOUT = 15000;
+const DELAY_MIN = 3000;
+const DELAY_MAX = 6000;
+const CRAWL_INTERVAL = 10000;
+const CHUNK_SIZE = 10;
+
 let isRunning = true;
 let isCrawling = false;
 
@@ -35,7 +42,10 @@ export async function triggerReloadCategories() {
                 isActive: true,
                 // ✅ FIX BUG #2: Loại trừ category của user đã hết hạn
                 user: {
-                    expiredAt: { gt: new Date() }
+                    is: {
+                        expiredAt: { gt: new Date() },
+                        isBotActive: true // ✅ CHỈ LẤY USER ĐANG BẬT BOT
+                    }
                 }
             },
             orderBy: { id: 'desc' },
@@ -135,7 +145,7 @@ async function getOrCreateBrowser() {
  * Xử lý cắt nhỏ tin nhắn nếu mảng items quá lớn (Tránh lỗi 400 Bad Request Telegram)
  */
 async function sendBatchTelegram(items, category, telegramId) {
-    const chunkSize = 10; // Giới hạn 10 món / 1 tin nhắn để tránh lỗi 400 Message too long của Telegram
+    const chunkSize = CHUNK_SIZE; // Giới hạn số món / 1 tin nhắn để tránh lỗi 400 Message too long của Telegram
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
         let messageText = `🔥 [MỚI] Tìm thấy ${chunk.length} món cho "${category.categoryId}":\n\n`;
@@ -166,6 +176,36 @@ async function sendBatchTelegram(items, category, telegramId) {
 }
 
 /**
+ * Trích xuất và lọc dữ liệu JSON từ API Mercari
+ * Tách biệt logic parse dữ liệu để tuân thủ SRP (Single Responsibility Principle)
+ */
+async function parseMercariData(data, category, isColdStart) {
+    let newItemsBatch = [];
+    if (data && data.items) {
+        for (const item of data.items) {
+            if (item.status === 'ITEM_STATUS_ON_SALE') {
+                const isNewItem = await itemManagerService.processNewItem(category.id, item.id);
+                if (isNewItem) {
+                    const priceJPY = item.price;
+                    console.log(`✈️ [Mới] ${item.name}`);
+
+                    if (!isColdStart) {
+                        newItemsBatch.push({
+                            id: item.id,
+                            name: item.name,
+                            price: priceJPY,
+                            brandName: item.itemBrand?.name || item.itemBrand?.subName || '',
+                            size: item.itemSizes?.[0]?.name || item.itemSize?.name || ''
+                        });
+                    }
+                }
+            }
+        }
+    }
+    return newItemsBatch;
+}
+
+/**
  * Tách biệt logic cào dữ liệu cho 1 Category duy nhất
  */
 async function scanSingleCategory(page, category) {
@@ -182,49 +222,58 @@ async function scanSingleCategory(page, category) {
     try {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
         
-        // Chờ API trả về kết quả tìm kiếm. Playwright sẽ ném lỗi nếu quá 15s.
+        // Chờ API trả về kết quả tìm kiếm.
         const searchResponse = await page.waitForResponse(
             resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
-            { timeout: 15000 }
+            { timeout: CRAWLER_TIMEOUT }
         );
         
         const data = await searchResponse.json();
-        if (data && data.items) {
-            let newItemsBatch = [];
-            for (const item of data.items) {
-                if (item.status === 'ITEM_STATUS_ON_SALE') {
-                    const isNewItem = await itemManagerService.processNewItem(category.id, item.id);
-                    if (isNewItem) {
-                        const priceJPY = item.price;
-                        console.log(`✈️ [Mới] ${item.name}`);
+        const newItemsBatch = await parseMercariData(data, category, isColdStart);
 
-                        if (!isColdStart) {
-                            newItemsBatch.push({
-                                id: item.id,
-                                name: item.name,
-                                price: priceJPY,
-                                brandName: item.itemBrand?.name || item.itemBrand?.subName || '',
-                                size: item.itemSizes?.[0]?.name || item.itemSize?.name || ''
-                            });
-                        }
-                    }
-                }
+        if (!isColdStart && newItemsBatch.length > 0) {
+            const telegramId = category.user?.telegramId;
+            console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
+            if (telegramId) {
+                await sendBatchTelegram(newItemsBatch, category, telegramId);
             }
-
-            if (!isColdStart && newItemsBatch.length > 0) {
-                const telegramId = category.user?.telegramId;
-                console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
-                if (telegramId) {
-                    await sendBatchTelegram(newItemsBatch, category, telegramId);
-                }
-            } else if (isColdStart) {
-                console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
-            }
+        } else if (isColdStart) {
+            console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
         }
     } catch (err) {
-        // Lỗi timeout (15s) của Playwright hoặc lỗi DB sẽ rơi vào đây, đảm bảo tiến trình dừng hẳn không thành Zombie.
+        // Lỗi timeout của Playwright hoặc lỗi DB sẽ rơi vào đây, đảm bảo tiến trình dừng hẳn không thành Zombie.
         console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
     }
+}
+
+/**
+ * Thiết lập tab (page) mới: chặn tải tài nguyên thừa và lắng nghe API tỷ giá
+ * Tách logic khởi tạo Page ra để tránh God Function
+ */
+async function setupCrawlerPage(context) {
+    const page = await context.newPage();
+
+    // Chặn tải hình ảnh, CSS để giảm RAM
+    await page.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+            route.abort();
+        } else {
+            route.continue();
+        }
+    });
+
+    // Bắt API response ngầm để lấy tỷ giá VNĐ (Chỉ cần cài 1 lần cho page này)
+    page.on('response', async (response) => {
+        if (response.url().includes('country?country_code=VN')) {
+            try {
+                const data = await response.json();
+                exchangeRate = data?.data?.exchange_rate || data?.exchange_rate || data?.rate || exchangeRate;
+            } catch (e) { }
+        }
+    });
+
+    return page;
 }
 
 /**
@@ -235,7 +284,7 @@ export async function startCrawlerLoop() {
 
     if (activeCategories.length === 0) {
         console.log("⏳ [Worker] Chưa có Category tìm kiếm nào trong RAM. Đang chờ...");
-        setTimeout(startCrawlerLoop, 10000);
+        setTimeout(startCrawlerLoop, CRAWL_INTERVAL);
         return;
     }
 
@@ -245,34 +294,16 @@ export async function startCrawlerLoop() {
     try {
         const browser = await getOrCreateBrowser();
         const context = await browser.newContext();
-        const page = await context.newPage();
-
-        // Chặn tải hình ảnh, CSS để giảm RAM
-        await page.route('**/*', (route) => {
-            const type = route.request().resourceType();
-            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
-                route.abort();
-            } else {
-                route.continue();
-            }
-        });
-
-        // Bắt API response ngầm để lấy tỷ giá VNĐ (Chỉ cần cài 1 lần cho page này)
-        page.on('response', async (response) => {
-            if (response.url().includes('country?country_code=VN')) {
-                try {
-                    const data = await response.json();
-                    exchangeRate = data?.data?.exchange_rate || data?.exchange_rate || data?.rate || exchangeRate;
-                } catch (e) { }
-            }
-        });
+        
+        // Gọi hàm setup riêng để lấy Page đã được config tối ưu
+        const page = await setupCrawlerPage(context);
 
         // Lặp qua các cấu hình Category trên 1 Tab duy nhất
         for (const category of activeCategories) {
             await scanSingleCategory(page, category);
             
             // Random delay giữa các lần tìm kiếm (chống block IP)
-            await randomDelay(3000, 6000);
+            await randomDelay(DELAY_MIN, DELAY_MAX);
         }
 
         // Đóng context (tab) sau mỗi vòng, nhưng GIỮ browser
@@ -289,9 +320,9 @@ export async function startCrawlerLoop() {
     isCrawling = false;
     if (!isRunning) return;
 
-    // Lên lịch chạy lượt tiếp theo sau 10 giây
-    console.log("⏳ [Worker] Đã xong 1 vòng. Nghỉ 10s giải nhiệt...");
-    setTimeout(startCrawlerLoop, 10000);
+    // Lên lịch chạy lượt tiếp theo
+    console.log(`⏳ [Worker] Đã xong 1 vòng. Nghỉ ${CRAWL_INTERVAL / 1000}s giải nhiệt...`);
+    setTimeout(startCrawlerLoop, CRAWL_INTERVAL);
 }
 
 /**

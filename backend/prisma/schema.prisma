@@ -21,6 +21,9 @@ model User {
   // 2. Thêm trường role, mặc định khách tạo tài khoản sẽ là MEMBER
   role       Role       @default(MEMBER) 
   
+  // --- THÊM MỚI CHO TÍNH NĂNG /STARTBOT VÀ /STOPBOT ---
+  isBotActive Boolean   @default(true)
+  
   createdAt  DateTime   @default(now())
   expiredAt  DateTime
   

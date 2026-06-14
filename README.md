@@ -104,6 +104,16 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
+### [2026-06-14] Tính năng /startbot & /stopbot
+- **FEAT**: Thêm trường `isBotActive` vào model `User` để hỗ trợ cờ tắt bật bot.
+- **FEAT**: Tích hợp lệnh `/startbot` và `/stopbot` trên Telegram giúp người dùng tạm dừng nhận thông báo mà không làm mất cấu hình danh mục. Tối ưu crawler không cào dữ liệu cho những user đã tắt bot.
+- **FIX**: Xử lý triệt để lỗi crash hệ thống do TypeError khi `stopListening()` không trả về Promise lúc tắt server.
+
+### [2026-06-14] Refactor & Tối ưu hóa Crawler
+- **REF**: Phân tách logic trong `crawler.service.js` nhằm đảm bảo nguyên tắc SRP (Single Responsibility Principle) và loại bỏ "God Function".
+- **OPT**: Tách cấu hình khởi tạo trang (`setupCrawlerPage`) và phân tích dữ liệu Mercari (`parseMercariData`) thành các hàm độc lập.
+- **OPT**: Di chuyển toàn bộ Magic Numbers (ví dụ: timeout, delay) lên đầu file dưới dạng hằng số (`CRAWLER_TIMEOUT`, `DELAY_MIN`, `CRAWL_INTERVAL`) để quản lý tập trung.
+
 ### [2026-06-14] Nâng cấp Kiến trúc Chịu tải Enterprise
 - **FIX**: Xử lý lỗi `400 Bad Request: message is too long` của Telegram bằng cơ chế Cắt tin nhắn (Chunking). Giới hạn mỗi tin nhắn chỉ chứa 20 món hàng, tự động ngắt nghỉ 1s giữa các tin chống block.
 - **OPT**: Refactor toàn diện `crawler.service.js`: Chẻ nhỏ siêu hàm `startCrawlerLoop` thành các module độc lập `scanSingleCategory` và `sendBatchTelegram`, tối ưu hóa hiệu suất và dễ bảo trì.

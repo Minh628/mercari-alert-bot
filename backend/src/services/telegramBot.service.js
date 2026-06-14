@@ -1,5 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
+import prisma from '../config/prisma.js';
+import { triggerReloadCategories } from './crawler.service.js';
 
 dotenv.config({
     quiet : true
@@ -25,7 +27,7 @@ class TelegramBotService {
             this.bot = new TelegramBot(token, { polling: true });
 
             // Lắng nghe lệnh /start hoặc /myid
-            this.bot.onText(/\/(start|myid)/, (msg) => {
+            this.bot.onText(/\/myid|\/start(?!bot)/, (msg) => {
                 const chatId = msg.chat.id;
                 const firstName = msg.from.first_name || 'bạn';
 
@@ -35,6 +37,46 @@ class TelegramBotService {
                 // Sử dụng parse_mode: Markdown để làm nổi bật ID và hỗ trợ copy nhanh trên di động
                 this.bot.sendMessage(chatId, replyMsg, { parse_mode: 'Markdown' })
                     .catch(err => console.error(`❌ Lỗi gửi phản hồi Telegram tới ${chatId}:`, err.message));
+            });
+
+            // Lắng nghe lệnh /startbot
+            this.bot.onText(/\/startbot/, async (msg) => {
+                const chatId = msg.chat.id;
+                try {
+                    const result = await prisma.user.updateMany({
+                        where: { telegramId: String(chatId) },
+                        data: { isBotActive: true }
+                    });
+                    
+                    if (result.count > 0) {
+                        await this.bot.sendMessage(chatId, "✅ Đã TIẾP TỤC gửi thông báo tự động. Bot đang cào dữ liệu trở lại!");
+                        triggerReloadCategories();
+                    } else {
+                        await this.bot.sendMessage(chatId, "⚠️ Bạn chưa liên kết Telegram ID với tài khoản nào trên Website.");
+                    }
+                } catch (error) {
+                    console.error("❌ Lỗi khi xử lý /startbot:", error.message);
+                }
+            });
+
+            // Lắng nghe lệnh /stopbot
+            this.bot.onText(/\/stopbot/, async (msg) => {
+                const chatId = msg.chat.id;
+                try {
+                    const result = await prisma.user.updateMany({
+                        where: { telegramId: String(chatId) },
+                        data: { isBotActive: false }
+                    });
+                    
+                    if (result.count > 0) {
+                        await this.bot.sendMessage(chatId, "🛑 Đã TẠM DỪNG thông báo. Bạn sẽ không nhận được tin nhắn nào nữa cho đến khi gõ lại /startbot.");
+                        triggerReloadCategories();
+                    } else {
+                        await this.bot.sendMessage(chatId, "⚠️ Bạn chưa liên kết Telegram ID với tài khoản nào trên Website.");
+                    }
+                } catch (error) {
+                    console.error("❌ Lỗi khi xử lý /stopbot:", error.message);
+                }
             });
 
             console.log('🤖 Telegram Bot đang lắng nghe tin nhắn...');
@@ -66,10 +108,11 @@ class TelegramBotService {
      */
     stopListening() {
         if (this.bot) {
-            this.bot.stopPolling()
+            return this.bot.stopPolling()
                 .then(() => console.log('✅ Đã dừng Telegram Bot Listener.'))
                 .catch(err => console.error('❌ Lỗi khi dừng Telegram Bot Listener:', err.message));
         }
+        return Promise.resolve();
     }
 }
 

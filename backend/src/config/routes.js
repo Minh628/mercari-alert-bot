@@ -17,6 +17,15 @@ export const setupRoutes = (app) => {
     app.get('/', (req, res) => {
         res.send('Mercari Alert Bot API is running...');
     });
+    
+    // ✅ FEAT #1: Health Check - Dùng UptimeRobot ping để chống Render Sleep
+    app.get('/health', (req, res) => {
+        res.status(200).json({
+            status: 'ok',
+            uptime: Math.floor(process.uptime()),
+            timestamp: new Date().toISOString()
+        });
+    });
 
 
     app.all(/.*/, (req, res) => {

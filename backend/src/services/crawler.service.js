@@ -131,10 +131,7 @@ async function getOrCreateBrowser() {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu',
-            // Giới hạn RAM cho Chromium (~128MB thay vì mặc định ~300MB+)
-            '--js-flags=--max-old-space-size=128',
-            '--single-process'
+            '--disable-gpu'
         ]
     });
     return persistentBrowser;

@@ -36,7 +36,11 @@ class ItemManagerService {
       return false; // Đã tồn tại, bỏ qua, không cần lưu DB
     }
 
-    // 2. Lưu vào DB và thêm vào RAM cache (Composite Key: id + categoryId)
+    // 2. Thêm vào RAM cache (Tắt DB để giảm tải Neon Serverless)
+    categoryCache.add(mercariItemId);
+    
+    // [COMMENT: KHÔNG LƯU DB NỮA ĐỂ TỐI ƯU CHI PHÍ NEON CU]
+    /*
     try {
       await prisma.item.create({
         data: {
@@ -56,6 +60,7 @@ class ItemManagerService {
       console.error(`[ItemManager] Lỗi lưu Database cho item ${mercariItemId}:`, error);
       throw error;
     }
+    */
 
     // 3. SLIDING WINDOW (Luật 10000/9850): Nếu số lượng item trong RAM của category vượt quá 10000
     if (categoryCache.size > 10000) {
@@ -86,6 +91,8 @@ class ItemManagerService {
     const deleteCount = Math.max(0, categoryCache.size - 150);
     if (deleteCount === 0) return;
 
+    // [COMMENT: KHÔNG TRUY VẤN VÀ XÓA TỪ DB NỮA]
+    /*
     // Lấy `deleteCount` items cũ nhất của riêng categoryId này để xóa (tận dụng @@index)
     const oldestItems = await prisma.item.findMany({
       where: { categoryId: categoryId },
@@ -111,6 +118,17 @@ class ItemManagerService {
     for (const itemId of oldestItems.map(item => item.id)) {
       categoryCache.delete(itemId);
     }
+    */
+
+    // Vì Set trong Javascript bảo toàn Insertion Order (phần tử thêm đầu tiên sẽ ở đầu).
+    // Ta chỉ cần pop `deleteCount` phần tử từ trên đầu Set xuống.
+    const iterator = categoryCache.values();
+    for (let i = 0; i < deleteCount; i++) {
+      const oldestItem = iterator.next().value;
+      if (oldestItem) {
+        categoryCache.delete(oldestItem);
+      }
+    }
   }
 
   /**
@@ -119,6 +137,8 @@ class ItemManagerService {
    * @param {number} categoryId 
    */
   async preloadCache(categoryId) {
+    // [COMMENT: KHÔNG PRELOAD TỪ DB NỮA - TẤT CẢ VỀ 0 LÀM COLD START TỰ NHIÊN]
+    /*
     // Lấy TOÀN BỘ items của category này. Giúp RAM biết được trọn vẹn số lượng của DB.
     const items = await prisma.item.findMany({
       where: { categoryId: categoryId },
@@ -142,6 +162,10 @@ class ItemManagerService {
           });
       }
     }
+    */
+    
+    // RAM trống = size 0 = Cold Start = Bot tự động nạp mốc mà không Spam Telegram.
+    this._initCache(categoryId);
   }
 
   /**

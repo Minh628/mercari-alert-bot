@@ -5,6 +5,14 @@ import ApiError from '../utils/ApiError.js';
 
 class UserService {
   /**
+   * Helper mã hóa mật khẩu
+   */
+  async _hashPassword(password) {
+    const saltRounds = 10;
+    return bcrypt.hash(password, saltRounds);
+  }
+
+  /**
    * 👑 Admin tạo tài khoản mới (có thể set role, expiredAt)
    */
   async registerUser(data) {
@@ -20,8 +28,7 @@ class UserService {
     }
 
     // Mã hoá mật khẩu
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await this._hashPassword(password);
 
     // Mặc định hết hạn sau 7 ngày nếu Admin không truyền expiredAt
     const defaultExpired = new Date();
@@ -114,8 +121,7 @@ class UserService {
 
     // Chỉ chấp nhận 2 trường được phép
     if (data.password) {
-      const saltRounds = 10;
-      updateData.password = await bcrypt.hash(data.password, saltRounds);
+      updateData.password = await this._hashPassword(data.password);
     }
 
     // telegramId cho phép set null (xoá liên kết) hoặc chuỗi mới
@@ -164,22 +170,11 @@ class UserService {
    * 👑 Admin: Cập nhật thông tin User bất kỳ (role, expiredAt, telegramId, reset password)
    */
   async updateUser(userId, data) {
-    // Kiểm tra user tồn tại
-    const existingUser = await prisma.user.findUnique({
-      where: { id: parseInt(userId, 10) },
-      select: { id: true }
-    });
-
-    if (!existingUser) {
-      throw new ApiError(404, 'User not found');
-    }
-
     const updateData = {};
 
     // Admin có thể đổi các trường sau
     if (data.password) {
-      const saltRounds = 10;
-      updateData.password = await bcrypt.hash(data.password, saltRounds);
+      updateData.password = await this._hashPassword(data.password);
     }
     if (data.telegramId !== undefined) {
       updateData.telegramId = data.telegramId;
@@ -195,40 +190,44 @@ class UserService {
       throw new ApiError(400, 'Không có trường hợp lệ để cập nhật');
     }
 
-    const user = await prisma.user.update({
-      where: { id: parseInt(userId, 10) },
-      data: updateData,
-      select: {
-        id: true,
-        username: true,
-        telegramId: true,
-        role: true,
-        createdAt: true,
-        expiredAt: true
-      }
-    });
+    try {
+      const user = await prisma.user.update({
+        where: { id: parseInt(userId, 10) },
+        data: updateData,
+        select: {
+          id: true,
+          username: true,
+          telegramId: true,
+          role: true,
+          createdAt: true,
+          expiredAt: true
+        }
+      });
 
-    return user;
+      return user;
+    } catch (error) {
+      if (error.code === 'P2025') {
+        throw new ApiError(404, 'User not found');
+      }
+      throw error;
+    }
   }
 
   /**
    * 👑 Admin: Xoá User
    */
   async deleteUser(userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: parseInt(userId, 10) },
-      select: { id: true }
-    });
-
-    if (!user) {
-      throw new ApiError(404, 'User not found');
+    try {
+      await prisma.user.delete({
+        where: { id: parseInt(userId, 10) }
+      });
+      return true;
+    } catch (error) {
+      if (error.code === 'P2025') {
+        throw new ApiError(404, 'User not found');
+      }
+      throw error;
     }
-
-    await prisma.user.delete({
-      where: { id: parseInt(userId, 10) }
-    });
-
-    return true;
   }
 }
 

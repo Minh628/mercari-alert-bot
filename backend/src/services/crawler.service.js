@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import telegramBotService from './telegramBot.service.js';
-// Sử dụng Prisma trực tiếp thay cho file JSON cũ
 import prisma from '../config/prisma.js';
 // Tích hợp Item Manager để tối ưu bộ nhớ và DB (Sliding Window)
 import itemManagerService from './itemManager.service.js';

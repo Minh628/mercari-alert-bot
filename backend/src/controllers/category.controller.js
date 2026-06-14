@@ -1,4 +1,4 @@
-import * as categoryService from '../services/category.service.js';
+import categoryService from '../services/category.service.js';
 
 // --- GET: Lấy danh sách Category của user hiện tại ---
 export const getCategoriesController = async (req, res) => {

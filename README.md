@@ -110,7 +110,7 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 - **FIX**: Xử lý triệt để lỗi Closure Leak & Race Condition: Bỏ hoàn toàn `page.on`, chuyển sang cơ chế Đồng bộ cục bộ (`waitForResponse`). Đảm bảo không bao giờ gửi nhầm khách hàng và không miss item.
 - **FEAT**: Áp dụng cơ chế **Khởi động nguội (Cold Start)**: Tự động xóa RAM khi Pause (`isActive=false`). Lượt quét tiếp theo sẽ coi là mốc khởi điểm và hoàn toàn im lặng, không spam Telegram.
 - **FEAT**: Triển khai cơ chế **Gom mẻ (Batching)**: Gom tất cả items mới trong 1 lượt cào thành 1 tin nhắn tổng hợp. Chống Rate Limit 429 tuyệt đối cho các từ khóa "siêu nóng" (10s/5 món).
-
+- **REF**: Refactor toàn diện thư mục `backend/src/services`: Chuyển `category.service.js` sang chuẩn kiến trúc OOP (Class), tối ưu DB I/O cho `user.service.js` (cắt giảm 50% số lượng query update/delete) và dọn dẹp mã lặp.
 
 ## 🚀 Hướng dẫn Deploy Lên Production
 

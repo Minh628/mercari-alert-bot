@@ -104,6 +104,10 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
+### [2026-06-14] Crawler Debug & Tối ưu Timeout
+- **FIX**: Tăng `CRAWLER_TIMEOUT` lên 30s để bù đắp cho mạng chậm và CPU yếu trên gói Render Free, giúp Playwright có đủ thời gian load trang và API.
+- **FEAT**: Bổ sung cơ chế Debug mù (Blind Debug). Khi xảy ra lỗi Timeout/Crash, Crawler sẽ tự động in log chi tiết (URL hiện tại, Title trang) ra màn hình Console để dễ dàng phát hiện chặn Captcha (Cloudflare/Datadome).
+
 ### [2026-06-14] Tính năng /startbot & /stopbot
 - **FEAT**: Thêm trường `isBotActive` vào model `User` để hỗ trợ cờ tắt bật bot.
 - **FEAT**: Tích hợp lệnh `/startbot` và `/stopbot` trên Telegram giúp người dùng tạm dừng nhận thông báo mà không làm mất cấu hình danh mục. Tối ưu crawler không cào dữ liệu cho những user đã tắt bot.

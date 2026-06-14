@@ -10,7 +10,7 @@ dotenv.config({ quiet: true });
 chromium.use(stealth());
 
 // --- CẤU HÌNH HẰNG SỐ (CONSTANTS) ---
-const CRAWLER_TIMEOUT = 15000;
+const CRAWLER_TIMEOUT = 30000; // Tăng lên 30s cho Render Free
 const DELAY_MIN = 3000;
 const DELAY_MAX = 6000;
 const CRAWL_INTERVAL = 10000;
@@ -217,7 +217,8 @@ async function scanSingleCategory(page, category) {
     console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
     try {
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+        // Tăng timeout cho hàm goto để chống sập khi mạng chậm
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT });
         
         // Chờ API trả về kết quả tìm kiếm.
         const searchResponse = await page.waitForResponse(
@@ -238,8 +239,18 @@ async function scanSingleCategory(page, category) {
             console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
         }
     } catch (err) {
-        // Lỗi timeout của Playwright hoặc lỗi DB sẽ rơi vào đây, đảm bảo tiến trình dừng hẳn không thành Zombie.
-        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}], bỏ qua...`);
+        // Lỗi timeout của Playwright hoặc lỗi DB sẽ rơi vào đây
+        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}]. Đang lấy log debug...`);
+        try {
+            // Lấy tiêu đề và URL hiện tại để xem có bị dính Captcha không
+            const currentUrl = page.url();
+            const currentTitle = await page.title();
+            console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
+            console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
+            console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
+        } catch (e) {
+            console.log(`   -> [Debug] Không lấy được thông tin trang (Tab có thể đã crash).`);
+        }
     }
 }
 

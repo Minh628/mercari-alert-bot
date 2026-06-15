@@ -229,6 +229,18 @@ class UserService {
       throw error;
     }
   }
+
+  /**
+   * Cập nhật trạng thái bot (bật/tắt) dựa trên Telegram ID
+   * Giúp tách biệt logic DB khỏi TelegramBot Service
+   */
+  async updateBotStatusByTelegramId(telegramId, isBotActive) {
+    const result = await prisma.user.updateMany({
+      where: { telegramId: String(telegramId) },
+      data: { isBotActive }
+    });
+    return result.count > 0;
+  }
 }
 
 export default new UserService();

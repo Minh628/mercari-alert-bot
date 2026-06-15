@@ -23,7 +23,7 @@ const server = app.listen(PORT, () => {
     telegramBotService.startListening();
 });
 
-// ✅ OPT #3: Graceful Shutdown - Tắt sạch sẽ khi Render gửi tín hiệu SIGTERM
+// ✅ OPT #3: Graceful Shutdown - Tắt sạch sẽ khi Render gửi tín hiệu SIGTERM hoặc Nodemon gửi SIGUSR2
 const gracefulShutdown = async (signal) => {
     console.log(`\n🛑 Nhận tín hiệu ${signal}, đang tắt server sạch sẽ...`);
     
@@ -39,15 +39,24 @@ const gracefulShutdown = async (signal) => {
     // Đóng HTTP server
     server.close(() => {
         console.log('✅ Server đã tắt hoàn toàn.');
-        process.exit(0);
+        if (signal === 'SIGUSR2') {
+            process.kill(process.pid, 'SIGUSR2');
+        } else {
+            process.exit(0);
+        }
     });
     
     // Force exit nếu graceful shutdown quá lâu (10s)
     setTimeout(() => {
         console.error('⚠️ Force exit sau 10s timeout.');
-        process.exit(1);
+        if (signal === 'SIGUSR2') {
+            process.kill(process.pid, 'SIGUSR2');
+        } else {
+            process.exit(1);
+        }
     }, 10000);
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // Lắng nghe Nodemon Restart

@@ -104,6 +104,17 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
+### [2026-06-15] Refactor Telegram Bot & Sửa lỗi Crash (409 Conflict)
+- **REF**: Refactor `telegramBot.service.js`: Loại bỏ truy vấn Prisma trực tiếp, phân tách logic DB sang `user.service.js` (hàm `updateBotStatusByTelegramId`) tuân thủ nghiêm ngặt nguyên tắc Clean Architecture.
+- **FIX**: Xử lý triệt để lỗi `ETELEGRAM: 409 Conflict` khi chạy Dev và Prod song song bằng cách bẫy sự kiện `polling_error`. Ứng dụng giờ đây sẽ in cảnh báo thay vì bị Crash/Exit Node.js.
+- **FIX**: Bổ sung cơ chế bắt tín hiệu `SIGUSR2` trong `server.js`, giúp Nodemon đóng ngắt kết nối Telegram cực kỳ sạch sẽ khi file thay đổi, không để lại tiến trình ma (zombie process).
+
+### [2026-06-15] Tối ưu RAM & Cơ chế Reload cho Crawler (Render Free)
+- **ARCH**: Triển khai kiến trúc **Tab Pool (LRU Cache)**: Giới hạn tối đa 3 Tab chạy ngầm cùng lúc để đảm bảo an toàn tuyệt đối cho RAM 512MB của Render.
+- **OPT**: Thay đổi cơ chế luồng cào dữ liệu: Lần đầu dùng `goto()` để khơi mào, các lần quét sau tự động tận dụng cơ chế `reload()` của trình duyệt (tiết kiệm băng thông, CPU, RAM do tái sử dụng resource cache).
+- **FIX**: Tối ưu cấu hình khởi tạo Playwright Chromium: Xóa `--single-process` để chống xung đột tiến trình trên Docker, bổ sung `--js-flags=--max-old-space-size=128` khóa cứng RAM V8.
+- **FIX**: Khắc phục rò rỉ RAM (Memory Leak) bằng cách dọn dẹp các Tab không còn sử dụng trong Pool. Tích hợp cơ chế Auto-Restart cho từng Tab đơn lẻ nếu gặp crash do timeout/trình duyệt.
+
 ### [2026-06-14] Crawler Debug & Tối ưu Timeout
 - **FIX**: Tăng `CRAWLER_TIMEOUT` lên 30s để bù đắp cho mạng chậm và CPU yếu trên gói Render Free, giúp Playwright có đủ thời gian load trang và API.
 - **FEAT**: Bổ sung cơ chế Debug mù (Blind Debug). Khi xảy ra lỗi Timeout/Crash, Crawler sẽ tự động in log chi tiết (URL hiện tại, Title trang) ra màn hình Console để dễ dàng phát hiện chặn Captcha (Cloudflare/Datadome).

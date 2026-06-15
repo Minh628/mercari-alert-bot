@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
-import prisma from '../config/prisma.js';
+import userService from './user.service.js';
 import { triggerReloadCategories } from './crawler.service.js';
 
 dotenv.config({
@@ -26,6 +26,15 @@ class TelegramBotService {
             // Khởi tạo bot với tính năng polling (lắng nghe liên tục)
             this.bot = new TelegramBot(token, { polling: true });
 
+            // Bắt sự kiện polling_error để tránh crash do xung đột Token (Lỗi 409)
+            this.bot.on('polling_error', (error) => {
+                if (error.code === 'ETELEGRAM' && error.message.includes('409')) {
+                    console.warn('⚠️ [Telegram Bot] Cảnh báo Lỗi 409: Có một instance khác đang dùng chung Token. Chức năng gửi tin vẫn hoạt động nhưng nhận lệnh có thể bị chia sẻ.');
+                } else {
+                    console.error('❌ [Telegram Bot] Polling Error:', error.message);
+                }
+            });
+
             // Lắng nghe lệnh /start hoặc /myid
             this.bot.onText(/\/myid|\/start(?!bot)/, (msg) => {
                 const chatId = msg.chat.id;
@@ -43,12 +52,9 @@ class TelegramBotService {
             this.bot.onText(/\/startbot/, async (msg) => {
                 const chatId = msg.chat.id;
                 try {
-                    const result = await prisma.user.updateMany({
-                        where: { telegramId: String(chatId) },
-                        data: { isBotActive: true }
-                    });
+                    const isUpdated = await userService.updateBotStatusByTelegramId(chatId, true);
                     
-                    if (result.count > 0) {
+                    if (isUpdated) {
                         await this.bot.sendMessage(chatId, "✅ Đã TIẾP TỤC gửi thông báo tự động. Bot đang cào dữ liệu trở lại!");
                         triggerReloadCategories();
                     } else {
@@ -63,12 +69,9 @@ class TelegramBotService {
             this.bot.onText(/\/stopbot/, async (msg) => {
                 const chatId = msg.chat.id;
                 try {
-                    const result = await prisma.user.updateMany({
-                        where: { telegramId: String(chatId) },
-                        data: { isBotActive: false }
-                    });
+                    const isUpdated = await userService.updateBotStatusByTelegramId(chatId, false);
                     
-                    if (result.count > 0) {
+                    if (isUpdated) {
                         await this.bot.sendMessage(chatId, "🛑 Đã TẠM DỪNG thông báo. Bạn sẽ không nhận được tin nhắn nào nữa cho đến khi gõ lại /startbot.");
                         triggerReloadCategories();
                     } else {

@@ -15,6 +15,7 @@ const DELAY_MIN = 3000;
 const DELAY_MAX = 6000;
 const CRAWL_INTERVAL = 10000;
 const CHUNK_SIZE = 10;
+const MAX_TABS = 3; // ✅ OPT: Số lượng tab tối đa mở cùng lúc (Tối ưu RAM 512MB)
 
 let isRunning = true;
 let isCrawling = false;
@@ -22,9 +23,12 @@ let isCrawling = false;
 // --- BIẾN RAM NỘI BỘ (Event-Driven Cache) ---
 // Chứa danh sách các cấu hình tìm kiếm hiện tại (kèm telegramId của user sở hữu)
 let activeCategories = [];
+// LRU Cache chứa các tab đang mở
+let pagePool = new Map();
 
 // --- PERSISTENT BROWSER: Giữ 1 browser instance xuyên suốt thay vì mở/đóng liên tục ---
 let persistentBrowser = null;
+let persistentContext = null; // Giữ context để duy trì Tab sống sót qua các vòng lặp
 let exchangeRate = null; // Cache global tỷ giá VNĐ
 
 /**
@@ -70,6 +74,16 @@ export async function triggerReloadCategories() {
             await itemManagerService.preloadCache(cat.id);
         }
         console.log(`✅ [Worker] Đã preload cache cho ${activeCategories.length} categories.`);
+
+        // ✅ OPT #4: Fix rò rỉ RAM (Memory Leak) - Xóa các Tab không còn thuộc activeCategories
+        const activeIds = activeCategories.map(c => c.id);
+        for (const [catId, page] of pagePool.entries()) {
+            if (!activeIds.includes(catId)) {
+                try { await page.close(); } catch (e) {}
+                pagePool.delete(catId);
+                console.log(`🧹 [Worker] Đã dọn dẹp Tab cũ (ID: ${catId}) khỏi RAM vì Category đã ngưng/xóa.`);
+            }
+        }
     } catch (error) {
         console.error("❌ [Worker] Lỗi tải Categories:", error);
     }
@@ -117,8 +131,8 @@ function buildSearchUrl(category) {
  */
 async function getOrCreateBrowser() {
     // Nếu browser đã tồn tại và còn kết nối → dùng lại
-    if (persistentBrowser && persistentBrowser.isConnected()) {
-        return persistentBrowser;
+    if (persistentBrowser && persistentBrowser.isConnected() && persistentContext) {
+        return { browser: persistentBrowser, context: persistentContext };
     }
     // Launch browser mới với cấu hình tối ưu RAM cho Render
     console.log("🌐 [Worker] Đang khởi tạo Browser mới...");
@@ -131,10 +145,15 @@ async function getOrCreateBrowser() {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu'
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+            '--js-flags=--max-old-space-size=128' // Khóa cứng RAM cho V8 Engine của JS cực tốt
         ]
     });
-    return persistentBrowser;
+    persistentContext = await persistentBrowser.newContext();
+    return { browser: persistentBrowser, context: persistentContext };
 }
 
 /**
@@ -205,7 +224,7 @@ async function parseMercariData(data, category, isColdStart) {
 /**
  * Tách biệt logic cào dữ liệu cho 1 Category duy nhất
  */
-async function scanSingleCategory(page, category) {
+async function scanSingleCategory(context, category) {
     const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
     const isColdStart = (cacheSize === 0);
 
@@ -216,16 +235,32 @@ async function scanSingleCategory(page, category) {
     const searchUrl = buildSearchUrl(category);
     console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
+    let page = null;
     try {
-        // Tăng timeout cho hàm goto để chống sập khi mạng chậm
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT });
-        
-        // Chờ API trả về kết quả tìm kiếm.
-        const searchResponse = await page.waitForResponse(
+        const pageInfo = await getPageForCategory(context, category.id);
+        page = pageInfo.page;
+
+        // Bắt API response song song với reload hoặc goto để tránh miss event
+        const responsePromise = page.waitForResponse(
             resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
             { timeout: CRAWLER_TIMEOUT }
         );
+
+        if (pageInfo.isReload) {
+            console.log(`   -> [Action] Reloading page...`);
+            await Promise.all([
+                responsePromise,
+                page.reload({ waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT })
+            ]);
+        } else {
+            console.log(`   -> [Action] Goto initial page...`);
+            await Promise.all([
+                responsePromise,
+                page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT })
+            ]);
+        }
         
+        const searchResponse = await responsePromise;
         const data = await searchResponse.json();
         const newItemsBatch = await parseMercariData(data, category, isColdStart);
 
@@ -239,17 +274,25 @@ async function scanSingleCategory(page, category) {
             console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
         }
     } catch (err) {
-        // Lỗi timeout của Playwright hoặc lỗi DB sẽ rơi vào đây
+        // Lỗi timeout của Playwright hoặc lỗi mạng
         console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}]. Đang lấy log debug...`);
-        try {
-            // Lấy tiêu đề và URL hiện tại để xem có bị dính Captcha không
-            const currentUrl = page.url();
-            const currentTitle = await page.title();
-            console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
-            console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
-            console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
-        } catch (e) {
-            console.log(`   -> [Debug] Không lấy được thông tin trang (Tab có thể đã crash).`);
+        if (page) {
+            try {
+                const currentUrl = page.url();
+                const currentTitle = await page.title();
+                console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
+                console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
+            } catch (e) {
+                console.log(`   -> [Debug] Không lấy được thông tin trang.`);
+            }
+        }
+        console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
+        
+        // Cơ chế Auto-Restart cho 1 Tab (Xóa tab lỗi để tạo lại ở vòng sau)
+        if (pagePool.has(category.id)) {
+            try { await pagePool.get(category.id).close(); } catch(e) {}
+            pagePool.delete(category.id);
+            console.log(`   -> [Recover] Đã xóa Tab bị lỗi khỏi Pool RAM. Sẽ khởi tạo lại ở vòng sau.`);
         }
     }
 }
@@ -285,6 +328,33 @@ async function setupCrawlerPage(context) {
 }
 
 /**
+ * Lấy Tab từ Pool (LRU Cache). Nếu thiếu thì tạo, nếu đầy thì thay thế tab cũ nhất.
+ */
+async function getPageForCategory(context, categoryId) {
+    if (pagePool.has(categoryId)) {
+        // Đã có Tab -> Tái sử dụng (Cập nhật vị trí LRU bằng cách xóa và set lại)
+        const page = pagePool.get(categoryId);
+        pagePool.delete(categoryId);
+        pagePool.set(categoryId, page);
+        return { page, isReload: true };
+    }
+
+    // Chưa có Tab -> Tạo mới hoặc thay thế
+    if (pagePool.size >= MAX_TABS) {
+        // Lấy Tab cũ nhất (phần tử đầu tiên của Map)
+        const oldestCategoryId = pagePool.keys().next().value;
+        const oldPage = pagePool.get(oldestCategoryId);
+        pagePool.delete(oldestCategoryId);
+        try { await oldPage.close(); } catch (e) {}
+        console.log(`♻️ [Pool] Đã tái chế Tab của Category [ID:${oldestCategoryId}] (Đạt giới hạn ${MAX_TABS} tabs).`);
+    }
+
+    const newPage = await setupCrawlerPage(context);
+    pagePool.set(categoryId, newPage);
+    return { page: newPage, isReload: false };
+}
+
+/**
  * Vòng lặp chính của hệ thống Crawler
  */
 export async function startCrawlerLoop() {
@@ -300,28 +370,25 @@ export async function startCrawlerLoop() {
     isCrawling = true;
 
     try {
-        const browser = await getOrCreateBrowser();
-        const context = await browser.newContext();
-        
-        // Gọi hàm setup riêng để lấy Page đã được config tối ưu
-        const page = await setupCrawlerPage(context);
+        const { context } = await getOrCreateBrowser();
 
-        // Lặp qua các cấu hình Category trên 1 Tab duy nhất
+        // Lặp qua các cấu hình Category
         for (const category of activeCategories) {
-            await scanSingleCategory(page, category);
+            await scanSingleCategory(context, category);
             
             // Random delay giữa các lần tìm kiếm (chống block IP)
             await randomDelay(DELAY_MIN, DELAY_MAX);
         }
 
-        // Đóng context (tab) sau mỗi vòng, nhưng GIỮ browser
-        await context.close();
+        // KHÔNG đóng context ở đây nữa để giữ các Tab trong pagePool sống
     } catch (error) {
         console.error('❌ [Worker] Lỗi Crawler:', error);
-        // Nếu browser bị crash, reset persistent browser
+        // Nếu browser bị crash, reset persistent browser và dọn pool
         if (persistentBrowser) {
             try { await persistentBrowser.close(); } catch (e) { }
             persistentBrowser = null;
+            persistentContext = null;
+            pagePool.clear(); // Xóa sạch tab pool
         }
     }
 
@@ -343,5 +410,7 @@ export async function stopCrawler() {
     if (persistentBrowser) {
         try { await persistentBrowser.close(); } catch (e) { }
         persistentBrowser = null;
+        persistentContext = null;
+        pagePool.clear();
     }
 }

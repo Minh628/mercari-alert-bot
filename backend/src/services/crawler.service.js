@@ -330,6 +330,58 @@ async function clearDomGarbage(page) {
     } catch (e) { }
 }
 
+/**
+ * Tách logic lấy data từ page hoặc gọi fetch API nội bộ
+ */
+async function fetchCategoryData(context, category, searchUrl) {
+    let data;
+    let config = apiConfigsCache.get(category.id);
+
+    if (!activePage || !config) {
+        // Lần đầu hoặc chưa có cache cho category này
+        const result = await setupAndGotoPage(context, searchUrl);
+        activePage = result.page;
+        data = result.data;
+        apiConfigsCache.set(category.id, result.apiConfig);
+    } else {
+        console.log(`   -> [Action] Gọi API nội bộ bằng fetch() (tiết kiệm bandwidth)...`);
+        const fetchResult = await executeInternalFetch(activePage, config);
+
+        if (fetchResult.error) {
+            console.log(`   -> ⚠️ API trả lỗi (status: ${fetchResult.status}). Fallback: goto() lại để refresh session...`);
+            // Lỗi session -> reset tab, xóa cache toàn bộ để goto lại
+            await resetActivePage();
+            
+            const result = await setupAndGotoPage(context, searchUrl);
+            activePage = result.page;
+            data = result.data;
+            apiConfigsCache.set(category.id, result.apiConfig);
+        } else {
+            data = fetchResult.data;
+        }
+    }
+    return data;
+}
+
+/**
+ * Helper xuất thông tin debug khi có lỗi trang
+ */
+async function logPageDebugInfo(page, err, categoryId) {
+    console.log(`⚠️ Lỗi/Timeout khi quét [ID:${categoryId}]. Đang lấy log debug...`);
+    if (page) {
+        try {
+            const currentUrl = page.url();
+            const currentTitle = await page.title();
+            console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
+            console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
+        } catch (e) {
+            console.log(`   -> [Debug] Không lấy được thông tin trang.`);
+        }
+    }
+    console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
+    console.log(`   -> [Recover] Đã xóa Tab lỗi. Sẽ goto() lại ở vòng sau.`);
+}
+
 async function scanSingleCategory(context, category) {
     const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
     const isColdStart = (cacheSize === 0);
@@ -342,33 +394,7 @@ async function scanSingleCategory(context, category) {
     console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
     try {
-        let data;
-        let config = apiConfigsCache.get(category.id);
-
-        if (!activePage || !config) {
-            // Lần đầu hoặc chưa có cache cho category này
-            const result = await setupAndGotoPage(context, searchUrl);
-            activePage = result.page;
-            data = result.data;
-            apiConfigsCache.set(category.id, result.apiConfig);
-        } else {
-            console.log(`   -> [Action] Gọi API nội bộ bằng fetch() (tiết kiệm bandwidth)...`);
-            const fetchResult = await executeInternalFetch(activePage, config);
-
-            if (fetchResult.error) {
-                console.log(`   -> ⚠️ API trả lỗi (status: ${fetchResult.status}). Fallback: goto() lại để refresh session...`);
-                // Lỗi session -> reset tab, xóa cache toàn bộ để goto lại
-                await resetActivePage();
-                
-                const result = await setupAndGotoPage(context, searchUrl);
-                activePage = result.page;
-                data = result.data;
-                apiConfigsCache.set(category.id, result.apiConfig);
-            } else {
-                data = fetchResult.data;
-            }
-        }
-
+        const data = await fetchCategoryData(context, category, searchUrl);
         const newItemsBatch = await parseMercariData(data, category, isColdStart);
 
         if (!isColdStart && newItemsBatch.length > 0) {
@@ -386,30 +412,35 @@ async function scanSingleCategory(context, category) {
         }
 
     } catch (err) {
-        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}]. Đang lấy log debug...`);
-        if (activePage) {
-            try {
-                const currentUrl = activePage.url();
-                const currentTitle = await activePage.title();
-                console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
-                console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
-            } catch (e) {
-                console.log(`   -> [Debug] Không lấy được thông tin trang.`);
-            }
-        }
-        console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
-
-        console.log(`   -> [Recover] Đã xóa Tab lỗi. Sẽ goto() lại ở vòng sau.`);
+        await logPageDebugInfo(activePage, err, category.id);
         await resetActivePage();
     }
+}
+
+/**
+ * Chuẩn bị môi trường trước khi quét: kiểm tra rỗng và xả RAM định kỳ
+ */
+async function prepareCrawlerEnvironment() {
+    if (activeCategories.length === 0) {
+        console.log("⏳ [Worker] Chưa có Category tìm kiếm nào trong RAM. Đang chờ...");
+        return false;
+    }
+
+    if (scanCount >= BROWSER_RESTART_INTERVAL) {
+        console.log(`♻️ [Auto-Restart] Đã quét ${scanCount} vòng. Đang restart browser để xả RAM...`);
+        await resetBrowser();
+        scanCount = 0;
+        console.log(`♻️ [Auto-Restart] Browser đã được restart thành công.`);
+    }
+    return true;
 }
 
 export async function startCrawlerLoop() {
     if (!isRunning) return;
     if (await checkAndHandleNightSleep()) return;
 
-    if (activeCategories.length === 0) {
-        console.log("⏳ [Worker] Chưa có Category tìm kiếm nào trong RAM. Đang chờ...");
+    const isReady = await prepareCrawlerEnvironment();
+    if (!isReady) {
         setTimeout(startCrawlerLoop, CRAWL_INTERVAL);
         return;
     }
@@ -418,13 +449,6 @@ export async function startCrawlerLoop() {
     isCrawling = true;
 
     try {
-        if (scanCount >= BROWSER_RESTART_INTERVAL) {
-            console.log(`♻️ [Auto-Restart] Đã quét ${scanCount} vòng. Đang restart browser để xả RAM...`);
-            await resetBrowser();
-            scanCount = 0;
-            console.log(`♻️ [Auto-Restart] Browser đã được restart thành công.`);
-        }
-
         const { context } = await getOrCreateBrowser();
 
         // ✅ Chạy qua tất cả các Categories

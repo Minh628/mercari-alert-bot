@@ -52,11 +52,13 @@ class TelegramBotService {
             this.bot.onText(/\/startbot/, async (msg) => {
                 const chatId = msg.chat.id;
                 try {
-                    const isUpdated = await userService.updateBotStatusByTelegramId(chatId, true);
+                    const result = await userService.updateBotStatusByTelegramId(chatId, true);
                     
-                    if (isUpdated) {
+                    if (result.success) {
                         await this.bot.sendMessage(chatId, "✅ Đã TIẾP TỤC gửi thông báo tự động. Bot đang cào dữ liệu trở lại!");
                         triggerReloadCategories();
+                    } else if (result.reason === 'expired') {
+                        await this.bot.sendMessage(chatId, "⚠️ Tài khoản của bạn đã hết hạn. Vui lòng gia hạn để tiếp tục sử dụng bot.");
                     } else {
                         await this.bot.sendMessage(chatId, "⚠️ Bạn chưa liên kết Telegram ID với tài khoản nào trên Website.");
                     }
@@ -69,9 +71,9 @@ class TelegramBotService {
             this.bot.onText(/\/stopbot/, async (msg) => {
                 const chatId = msg.chat.id;
                 try {
-                    const isUpdated = await userService.updateBotStatusByTelegramId(chatId, false);
+                    const result = await userService.updateBotStatusByTelegramId(chatId, false);
                     
-                    if (isUpdated) {
+                    if (result.success) {
                         await this.bot.sendMessage(chatId, "🛑 Đã TẠM DỪNG thông báo. Bạn sẽ không nhận được tin nhắn nào nữa cho đến khi gõ lại /startbot.");
                         triggerReloadCategories();
                     } else {

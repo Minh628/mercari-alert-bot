@@ -235,11 +235,29 @@ class UserService {
    * Giúp tách biệt logic DB khỏi TelegramBot Service
    */
   async updateBotStatusByTelegramId(telegramId, isBotActive) {
-    const result = await prisma.user.updateMany({
+    // Tìm user theo telegramId
+    const users = await prisma.user.findMany({
+      where: { telegramId: String(telegramId) }
+    });
+
+    if (!users || users.length === 0) {
+      return { success: false, reason: 'not_found' };
+    }
+
+    const user = users[0];
+
+    // Kiểm tra nếu yêu cầu bật bot nhưng tài khoản đã hết hạn
+    if (isBotActive && new Date() > new Date(user.expiredAt)) {
+      return { success: false, reason: 'expired' };
+    }
+
+    // Cập nhật trạng thái bot
+    await prisma.user.updateMany({
       where: { telegramId: String(telegramId) },
       data: { isBotActive }
     });
-    return result.count > 0;
+    
+    return { success: true };
   }
 }
 

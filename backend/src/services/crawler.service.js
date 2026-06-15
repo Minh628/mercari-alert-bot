@@ -137,7 +137,12 @@ export async function triggerReloadCategories() {
                 brandId: true,
                 priceMin: true,
                 priceMax: true,
-                user: { select: { telegramId: true } }
+                user: { 
+                    select: { 
+                        telegramId: true,
+                        expiredAt: true
+                    } 
+                }
             }
         });
         console.log(`✅ [Worker] Đã tải ${activeCategories.length} Categories vào RAM.`);
@@ -422,9 +427,15 @@ export async function startCrawlerLoop() {
 
         const { context } = await getOrCreateBrowser();
 
-        // ✅ Chạy qua tất cả các Categories (Thay vì chỉ lấy [0] như trước)
+        // ✅ Chạy qua tất cả các Categories
         for (const category of activeCategories) {
             if (!isRunning) break; // Dừng giữa chừng nếu có lệnh stop
+
+            // ✅ Kiểm tra nếu tài khoản User đã qua thời gian expiredAt thì bỏ qua
+            if (category.user?.expiredAt && new Date() > new Date(category.user.expiredAt)) {
+                continue;
+            }
+
             await scanSingleCategory(context, category);
             scanCount++;
             

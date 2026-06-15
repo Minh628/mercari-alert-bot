@@ -15,7 +15,7 @@ const DELAY_MAX = 6000;
 const CRAWL_INTERVAL = 10000;
 const CHUNK_SIZE = 10;
 const DOM_CLEAR_INTERVAL = 100;
-const BROWSER_RESTART_INTERVAL = 200;
+const BROWSER_RESTART_INTERVAL = 600; // ~2 tiếng restart 1 lần để an toàn cho 512MB RAM
 
 let isRunning = true;
 let isCrawling = false;

@@ -104,16 +104,24 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
+### [2026-06-15] Kiến trúc "Single Tab, API-Only" — Tối ưu cực hạn Bandwidth & RAM
+- **ARCH**: Loại bỏ hoàn toàn kiến trúc **Tab Pool (LRU Cache 3 tabs)**. Thay thế bằng kiến trúc **Single Tab**: Chỉ giữ đúng 1 tab Chromium duy nhất, tối ưu cho trường hợp sử dụng 1 user / 1 category.
+- **OPT**: Triển khai cơ chế **API-Only Fetch**: Chỉ `goto()` trang Mercari **1 lần duy nhất** để thiết lập session. Toàn bộ các vòng quét tiếp theo sử dụng `page.evaluate(fetch())` gọi thẳng API `entities:search` bên trong tab, **tiết kiệm ~98% bandwidth** (~10-20KB/lần thay vì ~500KB-1MB/lần).
+- **OPT**: Bổ sung cơ chế **Auto-Restart Browser** sau 200 vòng quét (~50 phút) để xả Memory Leak Chromium triệt để. Bổ sung **DOM Clear** định kỳ sau 100 vòng quét để giảm RAM mà vẫn giữ JS context cho `fetch()`.
+- **OPT**: Thêm cơ chế **Fallback tự động**: Nếu API trả lỗi 403/500 (session hết hạn), crawler tự động `goto()` lại để refresh session mà không cần can thiệp thủ công.
+- **REF**: Xóa bỏ ~60 dòng code thừa (`pagePool`, `getPageForCategory`, `MAX_TABS`, nhánh `reload()`). Thay bằng biến đơn giản `activePage` + `cachedApiConfig`.
+
 ### [2026-06-15] Refactor Telegram Bot & Sửa lỗi Crash (409 Conflict)
+
 - **REF**: Refactor `telegramBot.service.js`: Loại bỏ truy vấn Prisma trực tiếp, phân tách logic DB sang `user.service.js` (hàm `updateBotStatusByTelegramId`) tuân thủ nghiêm ngặt nguyên tắc Clean Architecture.
 - **FIX**: Xử lý triệt để lỗi `ETELEGRAM: 409 Conflict` khi chạy Dev và Prod song song bằng cách bẫy sự kiện `polling_error`. Ứng dụng giờ đây sẽ in cảnh báo thay vì bị Crash/Exit Node.js.
 - **FIX**: Bổ sung cơ chế bắt tín hiệu `SIGUSR2` trong `server.js`, giúp Nodemon đóng ngắt kết nối Telegram cực kỳ sạch sẽ khi file thay đổi, không để lại tiến trình ma (zombie process).
 
-### [2026-06-15] Tối ưu RAM & Cơ chế Reload cho Crawler (Render Free)
-- **ARCH**: Triển khai kiến trúc **Tab Pool (LRU Cache)**: Giới hạn tối đa 3 Tab chạy ngầm cùng lúc để đảm bảo an toàn tuyệt đối cho RAM 512MB của Render.
-- **OPT**: Thay đổi cơ chế luồng cào dữ liệu: Lần đầu dùng `goto()` để khơi mào, các lần quét sau tự động tận dụng cơ chế `reload()` của trình duyệt (tiết kiệm băng thông, CPU, RAM do tái sử dụng resource cache).
-- **FIX**: Tối ưu cấu hình khởi tạo Playwright Chromium: Xóa `--single-process` để chống xung đột tiến trình trên Docker, bổ sung `--js-flags=--max-old-space-size=128` khóa cứng RAM V8.
-- **FIX**: Khắc phục rò rỉ RAM (Memory Leak) bằng cách dọn dẹp các Tab không còn sử dụng trong Pool. Tích hợp cơ chế Auto-Restart cho từng Tab đơn lẻ nếu gặp crash do timeout/trình duyệt.
+### [2026-06-15] ~~Tối ưu RAM & Cơ chế Reload cho Crawler~~ *(Đã thay thế bởi kiến trúc Single Tab API-Only ở trên)*
+- ~~**ARCH**: Triển khai kiến trúc Tab Pool (LRU Cache)~~ → Đã loại bỏ.
+- ~~**OPT**: Cơ chế `reload()` tái sử dụng~~ → Đã thay bằng `page.evaluate(fetch())`.
+- **FIX**: Tối ưu cấu hình khởi tạo Playwright Chromium: Xóa `--single-process` để chống xung đột tiến trình trên Docker, bổ sung `--js-flags=--max-old-space-size=128` khóa cứng RAM V8 *(vẫn giữ nguyên)*.
+
 
 ### [2026-06-14] Crawler Debug & Tối ưu Timeout
 - **FIX**: Tăng `CRAWLER_TIMEOUT` lên 30s để bù đắp cho mạng chậm và CPU yếu trên gói Render Free, giúp Playwright có đủ thời gian load trang và API.

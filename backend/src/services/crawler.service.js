@@ -10,12 +10,13 @@ dotenv.config({ quiet: true });
 chromium.use(stealth());
 
 // --- CẤU HÌNH HẰNG SỐ (CONSTANTS) ---
-const CRAWLER_TIMEOUT = 45000; // Tăng lên 45s cho Render Free
+const CRAWLER_TIMEOUT = 45000; // Timeout cho Render Free
 const DELAY_MIN = 3000;
 const DELAY_MAX = 6000;
 const CRAWL_INTERVAL = 10000;
 const CHUNK_SIZE = 10;
-const MAX_TABS = 3; // ✅ OPT: Số lượng tab tối đa mở cùng lúc (Tối ưu RAM 512MB)
+const DOM_CLEAR_INTERVAL = 100;       // ✅ Xóa DOM rác sau N vòng quét để giải phóng RAM
+const BROWSER_RESTART_INTERVAL = 200; // ✅ Restart browser hoàn toàn sau N vòng để xả Memory Leak (~50 phút)
 
 let isRunning = true;
 let isCrawling = false;
@@ -23,12 +24,15 @@ let isCrawling = false;
 // --- BIẾN RAM NỘI BỘ (Event-Driven Cache) ---
 // Chứa danh sách các cấu hình tìm kiếm hiện tại (kèm telegramId của user sở hữu)
 let activeCategories = [];
-// LRU Cache chứa các tab đang mở
-let pagePool = new Map();
+
+// --- SINGLE TAB ARCHITECTURE: Chỉ giữ 1 tab duy nhất, không cần Pool ---
+let activePage = null;          // Tab Chromium duy nhất đang mở
+let cachedApiConfig = null;     // Cache cấu hình API { url, method, headers, postData } để replay bằng fetch()
+let scanCount = 0;              // Đếm số vòng quét (dùng cho auto-restart & DOM clear)
 
 // --- PERSISTENT BROWSER: Giữ 1 browser instance xuyên suốt thay vì mở/đóng liên tục ---
 let persistentBrowser = null;
-let persistentContext = null; // Giữ context để duy trì Tab sống sót qua các vòng lặp
+let persistentContext = null;
 let exchangeRate = null; // Cache global tỷ giá VNĐ
 
 /**
@@ -75,14 +79,12 @@ export async function triggerReloadCategories() {
         }
         console.log(`✅ [Worker] Đã preload cache cho ${activeCategories.length} categories.`);
 
-        // ✅ OPT #4: Fix rò rỉ RAM (Memory Leak) - Xóa các Tab không còn thuộc activeCategories
-        const activeIds = activeCategories.map(c => c.id);
-        for (const [catId, page] of pagePool.entries()) {
-            if (!activeIds.includes(catId)) {
-                try { await page.close(); } catch (e) {}
-                pagePool.delete(catId);
-                console.log(`🧹 [Worker] Đã dọn dẹp Tab cũ (ID: ${catId}) khỏi RAM vì Category đã ngưng/xóa.`);
-            }
+        // ✅ Khi category thay đổi → reset tab để vòng quét sau goto() lại với URL mới
+        if (activePage) {
+            try { await activePage.close(); } catch (e) { }
+            activePage = null;
+            cachedApiConfig = null;
+            console.log(`🧹 [Worker] Đã reset Tab do Category thay đổi.`);
         }
     } catch (error) {
         console.error("❌ [Worker] Lỗi tải Categories:", error);
@@ -149,7 +151,7 @@ async function getOrCreateBrowser() {
             '--disable-gpu',
             '--no-first-run',
             '--no-zygote',
-            '--js-flags=--max-old-space-size=128' // Khóa cứng RAM cho V8 Engine của JS cực tốt
+            '--js-flags=--max-old-space-size=128' // Khóa cứng RAM cho V8 Engine
         ]
     });
     persistentContext = await persistentBrowser.newContext();
@@ -165,7 +167,7 @@ async function sendBatchTelegram(items, category, telegramId) {
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
         let messageText = `🔥 [MỚI] Tìm thấy ${chunk.length} món cho "${category.categoryId}":\n\n`;
-        
+
         chunk.forEach((item, index) => {
             const priceVND = exchangeRate ? Math.round(item.price * exchangeRate) : null;
             const priceText = priceVND ? `${item.price.toLocaleString('ja-JP')}¥ (~${priceVND.toLocaleString('vi-VN')}đ)` : `${item.price.toLocaleString('ja-JP')}¥`;
@@ -182,7 +184,7 @@ async function sendBatchTelegram(items, category, telegramId) {
             parse_mode: 'Markdown',
             disable_web_page_preview: false
         });
-        
+
         // Nghỉ 1s giữa các tin nhắn để chống Rate limit
         if (i + chunkSize < items.length) {
             await new Promise(r => setTimeout(r, 1000));
@@ -222,89 +224,14 @@ async function parseMercariData(data, category, isColdStart) {
 }
 
 /**
- * Tách biệt logic cào dữ liệu cho 1 Category duy nhất
+ * ✅ Thiết lập Tab mới + Goto lần đầu: Chặn tài nguyên thừa, bắt tỷ giá, bắt API config
+ * Khi goto() lần đầu, intercept request 'entities:search' để lưu cấu hình API cho replay bằng fetch()
+ * Chỉ gọi hàm này khi activePage === null (lần đầu hoặc sau khi restart/fallback)
  */
-async function scanSingleCategory(context, category) {
-    const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
-    const isColdStart = (cacheSize === 0);
-
-    if (isColdStart) {
-        console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
-    }
-
-    const searchUrl = buildSearchUrl(category);
-    console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
-
-    let page = null;
-    try {
-        const pageInfo = await getPageForCategory(context, category.id);
-        page = pageInfo.page;
-
-        // Bắt API response song song với reload hoặc goto để tránh miss event
-        const responsePromise = page.waitForResponse(
-            resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
-            { timeout: CRAWLER_TIMEOUT }
-        );
-
-        if (pageInfo.isReload) {
-            console.log(`   -> [Action] Reloading page...`);
-            await Promise.all([
-                responsePromise,
-                page.reload({ waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT })
-            ]);
-        } else {
-            console.log(`   -> [Action] Goto initial page...`);
-            await Promise.all([
-                responsePromise,
-                page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT })
-            ]);
-        }
-        
-        const searchResponse = await responsePromise;
-        const data = await searchResponse.json();
-        const newItemsBatch = await parseMercariData(data, category, isColdStart);
-
-        if (!isColdStart && newItemsBatch.length > 0) {
-            const telegramId = category.user?.telegramId;
-            console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
-            if (telegramId) {
-                await sendBatchTelegram(newItemsBatch, category, telegramId);
-            }
-        } else if (isColdStart) {
-            console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
-        }
-    } catch (err) {
-        // Lỗi timeout của Playwright hoặc lỗi mạng
-        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}]. Đang lấy log debug...`);
-        if (page) {
-            try {
-                const currentUrl = page.url();
-                const currentTitle = await page.title();
-                console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
-                console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
-            } catch (e) {
-                console.log(`   -> [Debug] Không lấy được thông tin trang.`);
-            }
-        }
-        console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
-        
-        // Cơ chế Auto-Restart cho 1 Tab (Xóa tab lỗi để tạo lại ở vòng sau)
-        if (pagePool.has(category.id)) {
-            try { await pagePool.get(category.id).close(); } catch(e) {}
-            pagePool.delete(category.id);
-            console.log(`   -> [Recover] Đã xóa Tab bị lỗi khỏi Pool RAM. Sẽ khởi tạo lại ở vòng sau.`);
-        }
-    }
-}
-
-/**
- * Thiết lập tab (page) mới: chặn tải tài nguyên thừa và lắng nghe API tỷ giá
- * Tách logic khởi tạo Page ra để tránh God Function
- */
-async function setupCrawlerPage(context) {
+async function setupAndGotoPage(context, searchUrl) {
     const page = await context.newPage();
 
-    // Chặn tải hình ảnh, CSS để giảm RAM
+    // Chặn tải hình ảnh, CSS, font, media để tiết kiệm RAM & Bandwidth
     await page.route('**/*', (route) => {
         const type = route.request().resourceType();
         if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
@@ -324,38 +251,160 @@ async function setupCrawlerPage(context) {
         }
     });
 
-    return page;
+    // ✅ Intercept API request entities:search TRƯỚC khi goto() để không bỏ lỡ event
+    // Lưu lại cấu hình (URL, method, headers, body) để các vòng sau replay bằng fetch()
+    const apiConfigPromise = new Promise((resolve) => {
+        page.on('request', (request) => {
+            if (request.url().includes('entities:search') && request.method() !== 'OPTIONS') {
+                const headers = request.headers();
+                // Xóa headers mà browser sẽ tự quản lý khi fetch() nội bộ
+                delete headers['content-length'];
+                delete headers['cookie'];  // Browser tự gắn cookie khi fetch() cùng origin
+                delete headers['host'];
+
+                resolve({
+                    url: request.url(),
+                    method: request.method(),
+                    headers: headers,
+                    postData: request.postData() || null
+                });
+            }
+        });
+    });
+
+    // Đăng ký chờ API response song song
+    const responsePromise = page.waitForResponse(
+        resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
+        { timeout: CRAWLER_TIMEOUT }
+    );
+
+    console.log(`   -> [Action] Goto initial page: ${searchUrl}`);
+
+    // Goto + chờ API response + bắt API config đồng thời
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: CRAWLER_TIMEOUT });
+    const [searchResponse, apiConfig] = await Promise.all([responsePromise, apiConfigPromise]);
+
+    // Lưu API config vào cache global để replay ở các vòng sau
+    cachedApiConfig = apiConfig;
+    console.log(`   -> [Cache] Đã lưu API config: ${cachedApiConfig.method} ${cachedApiConfig.url.substring(0, 80)}...`);
+
+    const data = await searchResponse.json();
+    return { page, data };
 }
 
 /**
- * Lấy Tab từ Pool (LRU Cache). Nếu thiếu thì tạo, nếu đầy thì thay thế tab cũ nhất.
+ * ✅ CORE: Quét 1 Category bằng cơ chế "API-Only"
+ * Lần đầu (activePage === null): goto() để thiết lập session → bắt API config
+ * Các lần sau: page.evaluate(fetch()) gọi thẳng API → chỉ tốn ~10-20KB bandwidth/lần
  */
-async function getPageForCategory(context, categoryId) {
-    if (pagePool.has(categoryId)) {
-        // Đã có Tab -> Tái sử dụng (Cập nhật vị trí LRU bằng cách xóa và set lại)
-        const page = pagePool.get(categoryId);
-        pagePool.delete(categoryId);
-        pagePool.set(categoryId, page);
-        return { page, isReload: true };
+async function scanSingleCategory(context, category) {
+    const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
+    const isColdStart = (cacheSize === 0);
+
+    if (isColdStart) {
+        console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
     }
 
-    // Chưa có Tab -> Tạo mới hoặc thay thế
-    if (pagePool.size >= MAX_TABS) {
-        // Lấy Tab cũ nhất (phần tử đầu tiên của Map)
-        const oldestCategoryId = pagePool.keys().next().value;
-        const oldPage = pagePool.get(oldestCategoryId);
-        pagePool.delete(oldestCategoryId);
-        try { await oldPage.close(); } catch (e) {}
-        console.log(`♻️ [Pool] Đã tái chế Tab của Category [ID:${oldestCategoryId}] (Đạt giới hạn ${MAX_TABS} tabs).`);
-    }
+    const searchUrl = buildSearchUrl(category);
+    console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
 
-    const newPage = await setupCrawlerPage(context);
-    pagePool.set(categoryId, newPage);
-    return { page: newPage, isReload: false };
+    try {
+        let data;
+
+        if (!activePage || !cachedApiConfig) {
+            // ===== LẦN ĐẦU: goto() để thiết lập session & bắt API config =====
+            const result = await setupAndGotoPage(context, searchUrl);
+            activePage = result.page;
+            data = result.data;
+        } else {
+            // ===== CÁC LẦN SAU: page.evaluate(fetch) — Chỉ gọi API, KHÔNG tải lại trang =====
+            console.log(`   -> [Action] Gọi API nội bộ bằng fetch() (tiết kiệm bandwidth)...`);
+
+            // Truyền cấu hình API vào page.evaluate() để gọi fetch() BÊN TRONG Chromium
+            // fetch() chạy trong tab → tự mang cookies, TLS fingerprint → không bị anti-bot chặn
+            const fetchResult = await activePage.evaluate(async (config) => {
+                try {
+                    const resp = await fetch(config.url, {
+                        method: config.method,
+                        headers: config.headers,
+                        body: config.postData,
+                        credentials: 'include' // Gửi kèm cookie cho cross-origin request
+                    });
+                    if (!resp.ok) {
+                        return { error: true, status: resp.status };
+                    }
+                    return { error: false, data: await resp.json() };
+                } catch (e) {
+                    return { error: true, status: 0, message: e.message };
+                }
+            }, cachedApiConfig);
+
+            // Kiểm tra kết quả fetch
+            if (fetchResult.error) {
+                // ===== FALLBACK: Session hết hạn hoặc bị block → goto() lại để refresh =====
+                console.log(`   -> ⚠️ API trả lỗi (status: ${fetchResult.status}). Fallback: goto() lại để refresh session...`);
+                try { await activePage.close(); } catch (e) { }
+                activePage = null;
+                cachedApiConfig = null;
+
+                // Tạo lại page mới bằng goto()
+                const result = await setupAndGotoPage(context, searchUrl);
+                activePage = result.page;
+                data = result.data;
+            } else {
+                data = fetchResult.data;
+            }
+        }
+
+        // ✅ Xử lý data nhận được (chung cho cả 2 nhánh: goto lần đầu & fetch các lần sau)
+        const newItemsBatch = await parseMercariData(data, category, isColdStart);
+
+        if (!isColdStart && newItemsBatch.length > 0) {
+            const telegramId = category.user?.telegramId;
+            console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
+            if (telegramId) {
+                await sendBatchTelegram(newItemsBatch, category, telegramId);
+            }
+        } else if (isColdStart) {
+            console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
+        }
+
+        // ✅ Xóa DOM rác định kỳ để giảm RAM Chromium (giữ nguyên JS context cho fetch)
+        if (scanCount > 0 && scanCount % DOM_CLEAR_INTERVAL === 0 && activePage) {
+            try {
+                await activePage.evaluate(() => { document.body.innerHTML = ''; });
+                console.log(`🧹 [RAM] Đã xóa DOM rác sau ${scanCount} vòng quét.`);
+            } catch (e) { }
+        }
+
+    } catch (err) {
+        // Lỗi timeout của Playwright hoặc lỗi mạng
+        console.log(`⚠️ Lỗi/Timeout khi quét [ID:${category.id}]. Đang lấy log debug...`);
+        if (activePage) {
+            try {
+                const currentUrl = activePage.url();
+                const currentTitle = await activePage.title();
+                console.log(`   -> [Debug] URL hiện tại: ${currentUrl}`);
+                console.log(`   -> [Debug] Title màn hình: ${currentTitle}`);
+            } catch (e) {
+                console.log(`   -> [Debug] Không lấy được thông tin trang.`);
+            }
+        }
+        console.log(`   -> [Debug] Nội dung lỗi: ${err.message}`);
+
+        // Dọn dẹp tab lỗi → vòng sau sẽ goto() tạo lại
+        if (activePage) {
+            try { await activePage.close(); } catch (e) { }
+            activePage = null;
+            cachedApiConfig = null;
+            console.log(`   -> [Recover] Đã xóa Tab lỗi. Sẽ goto() lại ở vòng sau.`);
+        }
+    }
 }
 
 /**
  * Vòng lặp chính của hệ thống Crawler
+ * ✅ Thêm cơ chế Auto-Restart browser sau N vòng để xả Memory Leak triệt để
  */
 export async function startCrawlerLoop() {
     if (!isRunning) return;
@@ -366,51 +415,72 @@ export async function startCrawlerLoop() {
         return;
     }
 
-    console.log(`\n🚀 [Worker] Khởi chạy lượt quét mới với ${activeCategories.length} Category...`);
+    console.log(`\n🚀 [Worker] Khởi chạy lượt quét #${scanCount + 1}...`);
     isCrawling = true;
 
     try {
-        const { context } = await getOrCreateBrowser();
-
-        // Lặp qua các cấu hình Category
-        for (const category of activeCategories) {
-            await scanSingleCategory(context, category);
-            
-            // Random delay giữa các lần tìm kiếm (chống block IP)
-            await randomDelay(DELAY_MIN, DELAY_MAX);
+        // ✅ Auto-Restart Browser sau N vòng quét để xả RAM triệt để (chống Memory Leak Chromium)
+        if (scanCount >= BROWSER_RESTART_INTERVAL) {
+            console.log(`♻️ [Auto-Restart] Đã quét ${scanCount} vòng. Đang restart browser để xả RAM...`);
+            if (activePage) {
+                try { await activePage.close(); } catch (e) { }
+                activePage = null;
+                cachedApiConfig = null;
+            }
+            if (persistentBrowser) {
+                try { await persistentBrowser.close(); } catch (e) { }
+                persistentBrowser = null;
+                persistentContext = null;
+            }
+            scanCount = 0;
+            console.log(`♻️ [Auto-Restart] Browser đã được restart thành công.`);
         }
 
-        // KHÔNG đóng context ở đây nữa để giữ các Tab trong pagePool sống
+        const { context } = await getOrCreateBrowser();
+
+        // ✅ Chỉ quét category đầu tiên (1 user, 1 category)
+        const category = activeCategories[0];
+        if (category) {
+            await scanSingleCategory(context, category);
+            scanCount++;
+        }
+
     } catch (error) {
         console.error('❌ [Worker] Lỗi Crawler:', error);
-        // Nếu browser bị crash, reset persistent browser và dọn pool
+        // Nếu browser bị crash, reset toàn bộ
         if (persistentBrowser) {
             try { await persistentBrowser.close(); } catch (e) { }
             persistentBrowser = null;
             persistentContext = null;
-            pagePool.clear(); // Xóa sạch tab pool
         }
+        activePage = null;
+        cachedApiConfig = null;
     }
 
     isCrawling = false;
     if (!isRunning) return;
 
     // Lên lịch chạy lượt tiếp theo
-    console.log(`⏳ [Worker] Đã xong 1 vòng. Nghỉ ${CRAWL_INTERVAL / 1000}s giải nhiệt...`);
+    console.log(`⏳ [Worker] Đã xong. Nghỉ ${CRAWL_INTERVAL / 1000}s...`);
     setTimeout(startCrawlerLoop, CRAWL_INTERVAL);
 }
 
 /**
- * ✅ OPT #3: Graceful Shutdown - Dừng crawler và đóng browser sạch sẽ
+ * ✅ Graceful Shutdown - Dừng crawler và đóng browser sạch sẽ
  */
 export async function stopCrawler() {
     isRunning = false;
     console.log("🛑 [Worker] Crawler đã bị dừng.");
-    // Đóng persistent browser nếu còn, chặn deadlock 3s
+    // Đóng tab đang mở
+    if (activePage) {
+        try { await activePage.close(); } catch (e) { }
+        activePage = null;
+        cachedApiConfig = null;
+    }
+    // Đóng persistent browser
     if (persistentBrowser) {
         try { await persistentBrowser.close(); } catch (e) { }
         persistentBrowser = null;
         persistentContext = null;
-        pagePool.clear();
     }
 }

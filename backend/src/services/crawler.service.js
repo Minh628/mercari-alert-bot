@@ -10,7 +10,7 @@ dotenv.config({ quiet: true });
 chromium.use(stealth());
 
 // --- CẤU HÌNH HẰNG SỐ (CONSTANTS) ---
-const CRAWLER_TIMEOUT = 30000; // Tăng lên 30s cho Render Free
+const CRAWLER_TIMEOUT = 45000; // Tăng lên 45s cho Render Free
 const DELAY_MIN = 3000;
 const DELAY_MAX = 6000;
 const CRAWL_INTERVAL = 10000;

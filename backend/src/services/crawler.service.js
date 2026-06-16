@@ -10,12 +10,12 @@ chromium.use(stealth());
 
 // --- CẤU HÌNH HẰNG SỐ (CONSTANTS) ---
 const CRAWLER_TIMEOUT = 45000;
-const DELAY_MIN = 3000;
-const DELAY_MAX = 6000;
+const DELAY_MIN = 1000;
+const DELAY_MAX = 2000;
 const CRAWL_INTERVAL = 10000;
 const CHUNK_SIZE = 10;
 const DOM_CLEAR_INTERVAL = 100;
-const BROWSER_RESTART_INTERVAL = 600; // ~2 tiếng restart 1 lần để an toàn cho 512MB RAM
+const BROWSER_RESTART_INTERVAL = 2400; // 
 
 let isRunning = true;
 let isCrawling = false;
@@ -197,6 +197,7 @@ async function getOrCreateBrowser() {
             '--disable-gpu',
             '--no-first-run',
             '--no-zygote',
+            '--disable-dev-shm-usage',
             '--js-flags=--max-old-space-size=128'
         ]
     });
@@ -266,7 +267,7 @@ async function setupAndGotoPage(context, searchUrl) {
 
     const apiConfigPromise = new Promise((resolve) => {
         page.on('request', (request) => {
-            if (request.url().includes('entities:search') && request.method() !== 'OPTIONS') {
+            if (request.url().includes('entities:search') ) {
                 const headers = request.headers();
                 delete headers['content-length'];
                 delete headers['cookie'];
@@ -283,7 +284,7 @@ async function setupAndGotoPage(context, searchUrl) {
     });
 
     const responsePromise = page.waitForResponse(
-        resp => resp.url().includes('entities:search') && resp.request().method() !== 'OPTIONS',
+        resp => resp.url().includes('entities:search') ,
         { timeout: CRAWLER_TIMEOUT }
     );
 
@@ -464,7 +465,7 @@ export async function startCrawlerLoop() {
             scanCount++;
             
             // Thêm delay nhỏ giữa các Category để tránh rate limit
-            await randomDelay(1000, 2000); 
+            await randomDelay(DELAY_MIN, DELAY_MAX); 
         }
 
     } catch (error) {

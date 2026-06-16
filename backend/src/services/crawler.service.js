@@ -220,7 +220,7 @@ async function sendBatchTelegram(items, category, telegramId) {
         });
 
         if (i + chunkSize < items.length) {
-            await randomDelay(1000, 1000);
+            await randomDelay(2000, 3000);
         }
     }
     console.log(`📲 Đã gửi Batching ${items.length} món cho Telegram ${telegramId}`);

@@ -103,48 +103,7 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 ---
 
 ## 📋 Thay đổi gần đây
-
-### [2026-06-15] Kiến trúc "Single Tab, API-Only" — Tối ưu cực hạn Bandwidth & RAM
-- **ARCH**: Loại bỏ hoàn toàn kiến trúc **Tab Pool (LRU Cache 3 tabs)**. Thay thế bằng kiến trúc **Single Tab**: Chỉ giữ đúng 1 tab Chromium duy nhất, tối ưu cho trường hợp sử dụng 1 user / 1 category.
-- **OPT**: Triển khai cơ chế **API-Only Fetch**: Chỉ `goto()` trang Mercari **1 lần duy nhất** để thiết lập session. Toàn bộ các vòng quét tiếp theo sử dụng `page.evaluate(fetch())` gọi thẳng API `entities:search` bên trong tab, **tiết kiệm ~98% bandwidth** (~10-20KB/lần thay vì ~500KB-1MB/lần).
-- **OPT**: Bổ sung cơ chế **Auto-Restart Browser** sau 200 vòng quét (~50 phút) để xả Memory Leak Chromium triệt để. Bổ sung **DOM Clear** định kỳ sau 100 vòng quét để giảm RAM mà vẫn giữ JS context cho `fetch()`.
-- **OPT**: Thêm cơ chế **Fallback tự động**: Nếu API trả lỗi 403/500 (session hết hạn), crawler tự động `goto()` lại để refresh session mà không cần can thiệp thủ công.
-- **REF**: Xóa bỏ ~60 dòng code thừa (`pagePool`, `getPageForCategory`, `MAX_TABS`, nhánh `reload()`). Thay bằng biến đơn giản `activePage` + `cachedApiConfig`.
-
-### [2026-06-15] Refactor Telegram Bot & Sửa lỗi Crash (409 Conflict)
-
-- **REF**: Refactor `telegramBot.service.js`: Loại bỏ truy vấn Prisma trực tiếp, phân tách logic DB sang `user.service.js` (hàm `updateBotStatusByTelegramId`) tuân thủ nghiêm ngặt nguyên tắc Clean Architecture.
-- **FIX**: Xử lý triệt để lỗi `ETELEGRAM: 409 Conflict` khi chạy Dev và Prod song song bằng cách bẫy sự kiện `polling_error`. Ứng dụng giờ đây sẽ in cảnh báo thay vì bị Crash/Exit Node.js.
-- **FIX**: Bổ sung cơ chế bắt tín hiệu `SIGUSR2` trong `server.js`, giúp Nodemon đóng ngắt kết nối Telegram cực kỳ sạch sẽ khi file thay đổi, không để lại tiến trình ma (zombie process).
-
-### [2026-06-15] ~~Tối ưu RAM & Cơ chế Reload cho Crawler~~ *(Đã thay thế bởi kiến trúc Single Tab API-Only ở trên)*
-- ~~**ARCH**: Triển khai kiến trúc Tab Pool (LRU Cache)~~ → Đã loại bỏ.
-- ~~**OPT**: Cơ chế `reload()` tái sử dụng~~ → Đã thay bằng `page.evaluate(fetch())`.
-- **FIX**: Tối ưu cấu hình khởi tạo Playwright Chromium: Xóa `--single-process` để chống xung đột tiến trình trên Docker, bổ sung `--js-flags=--max-old-space-size=128` khóa cứng RAM V8 *(vẫn giữ nguyên)*.
-
-
-### [2026-06-14] Crawler Debug & Tối ưu Timeout
-- **FIX**: Tăng `CRAWLER_TIMEOUT` lên 30s để bù đắp cho mạng chậm và CPU yếu trên gói Render Free, giúp Playwright có đủ thời gian load trang và API.
-- **FEAT**: Bổ sung cơ chế Debug mù (Blind Debug). Khi xảy ra lỗi Timeout/Crash, Crawler sẽ tự động in log chi tiết (URL hiện tại, Title trang) ra màn hình Console để dễ dàng phát hiện chặn Captcha (Cloudflare/Datadome).
-
-### [2026-06-14] Tính năng /startbot & /stopbot
-- **FEAT**: Thêm trường `isBotActive` vào model `User` để hỗ trợ cờ tắt bật bot.
-- **FEAT**: Tích hợp lệnh `/startbot` và `/stopbot` trên Telegram giúp người dùng tạm dừng nhận thông báo mà không làm mất cấu hình danh mục. Tối ưu crawler không cào dữ liệu cho những user đã tắt bot.
-- **FIX**: Xử lý triệt để lỗi crash hệ thống do TypeError khi `stopListening()` không trả về Promise lúc tắt server.
-
-### [2026-06-14] Refactor & Tối ưu hóa Crawler
-- **REF**: Phân tách logic trong `crawler.service.js` nhằm đảm bảo nguyên tắc SRP (Single Responsibility Principle) và loại bỏ "God Function".
-- **OPT**: Tách cấu hình khởi tạo trang (`setupCrawlerPage`) và phân tích dữ liệu Mercari (`parseMercariData`) thành các hàm độc lập.
-- **OPT**: Di chuyển toàn bộ Magic Numbers (ví dụ: timeout, delay) lên đầu file dưới dạng hằng số (`CRAWLER_TIMEOUT`, `DELAY_MIN`, `CRAWL_INTERVAL`) để quản lý tập trung.
-
-### [2026-06-14] Nâng cấp Kiến trúc Chịu tải Enterprise
-- **FIX**: Xử lý lỗi `400 Bad Request: message is too long` của Telegram bằng cơ chế Cắt tin nhắn (Chunking). Giới hạn mỗi tin nhắn chỉ chứa 20 món hàng, tự động ngắt nghỉ 1s giữa các tin chống block.
-- **OPT**: Refactor toàn diện `crawler.service.js`: Chẻ nhỏ siêu hàm `startCrawlerLoop` thành các module độc lập `scanSingleCategory` và `sendBatchTelegram`, tối ưu hóa hiệu suất và dễ bảo trì.
-- **FIX**: Xử lý triệt để lỗi Closure Leak & Race Condition: Bỏ hoàn toàn `page.on`, chuyển sang cơ chế Đồng bộ cục bộ (`waitForResponse`). Đảm bảo không bao giờ gửi nhầm khách hàng và không miss item.
-- **FEAT**: Áp dụng cơ chế **Khởi động nguội (Cold Start)**: Tự động xóa RAM khi Pause (`isActive=false`). Lượt quét tiếp theo sẽ coi là mốc khởi điểm và hoàn toàn im lặng, không spam Telegram.
-- **FEAT**: Triển khai cơ chế **Gom mẻ (Batching)**: Gom tất cả items mới trong 1 lượt cào thành 1 tin nhắn tổng hợp. Chống Rate Limit 429 tuyệt đối cho các từ khóa "siêu nóng" (10s/5 món).
-- **REF**: Refactor toàn diện thư mục `backend/src/services`: Chuyển `category.service.js` sang chuẩn kiến trúc OOP (Class), tối ưu DB I/O cho `user.service.js` (cắt giảm 50% số lượng query update/delete) và dọn dẹp mã lặp.
-
+      
 ## 🚀 Hướng dẫn Deploy Lên Production
 
 ### 1. Deploy Backend Lên Render (Web Service)

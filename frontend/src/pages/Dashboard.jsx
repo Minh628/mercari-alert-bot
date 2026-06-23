@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../services/api';
+import { Button } from '../components/common/Button';
 
 const Dashboard = () => {
     const [keyword, setKeyword] = useState('');
@@ -34,12 +35,12 @@ const Dashboard = () => {
                     onChange={(e) => setKeyword(e.target.value)}
                     style={{ padding: '10px', fontSize: '16px', width: '300px' }}
                 />
-                <button
+                <Button
                     type="submit"
                     style={{ padding: '10px 20px', fontSize: '16px', marginLeft: '10px', cursor: 'pointer' }}
                 >
                     Đưa vào tầm ngắm
-                </button>
+                </Button>
             </form>
 
             <p style={{ marginTop: '20px', fontWeight: 'bold', color: 'blue' }}>

@@ -1,8 +1,8 @@
 import express from 'express';
-import { getCategoriesController, addCategoryController, deleteCategoryController, updateCategoryController, getAllCategoriesAdminController } from '../controllers/category.controller.js';
-import { authenticateJWT } from '../middlewares/auth.middleware.js';
-import { authorizeRoles } from '../middlewares/role.middleware.js';
-import { checkExpiry } from '../middlewares/expiry.middleware.js';
+import { getCategoriesController, addCategoryController, deleteCategoryController, updateCategoryController, getAllCategoriesAdminController } from './category.controller.js';
+import { authenticateJWT } from '../../middlewares/auth.middleware.js';
+import { authorizeRoles } from '../../middlewares/role.middleware.js';
+import { checkExpiry } from '../../middlewares/expiry.middleware.js';
 
 const router = express.Router();
 

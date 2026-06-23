@@ -1,8 +1,8 @@
 import express from 'express';
-import itemController from '../controllers/item.controller.js';
-import { authenticateJWT } from '../middlewares/auth.middleware.js';
-import { authorizeRoles } from '../middlewares/role.middleware.js';
-import { checkExpiry } from '../middlewares/expiry.middleware.js';
+import itemController from './item.controller.js';
+import { authenticateJWT } from '../../middlewares/auth.middleware.js';
+import { authorizeRoles } from '../../middlewares/role.middleware.js';
+import { checkExpiry } from '../../middlewares/expiry.middleware.js';
 
 const router = express.Router();
 

@@ -1,4 +1,4 @@
-import itemService from '../services/item.service.js';
+import itemService from './item.service.js';
 
 class ItemController {
   // 🔑 Xem items của 1 category (user chỉ xem category của mình)

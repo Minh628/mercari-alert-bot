@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import prisma from '../config/prisma.js';
-import ApiError from '../utils/ApiError.js';
+import prisma from '../../config/prisma.js';
+import ApiError from '../../utils/ApiError.js';
 
 class UserService {
   /**

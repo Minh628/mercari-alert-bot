@@ -1,6 +1,6 @@
-import categoryRoutes from '../routes/category.routes.js';
-import userRoutes from '../routes/user.routes.js';
-import itemRoutes from '../routes/item.routes.js';
+import categoryRoutes from '../modules/category/category.routes.js';
+import userRoutes from '../modules/user/user.routes.js';
+import itemRoutes from '../modules/item/item.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng

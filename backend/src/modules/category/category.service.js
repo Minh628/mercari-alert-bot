@@ -1,6 +1,6 @@
-import prisma from '../config/prisma.js';
-import { triggerReloadCategories } from './crawler.service.js';
-import itemManagerService from './itemManager.service.js';
+import prisma from '../../config/prisma.js';
+import { triggerReloadCategories } from '../crawler/crawler.service.js';
+import itemManagerService from '../crawler/itemManager.service.js';
 
 class CategoryService {
   /**

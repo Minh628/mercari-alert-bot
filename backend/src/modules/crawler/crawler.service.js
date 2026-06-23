@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { chromium } from 'playwright-extra';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import telegramBotService from './telegramBot.service.js';
-import prisma from '../config/prisma.js';
+import prisma from '../../config/prisma.js';
 import itemManagerService from './itemManager.service.js';
 
 dotenv.config({ quiet: true });

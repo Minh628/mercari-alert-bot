@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
-import userService from './user.service.js';
+import userService from '../user/user.service.js';
 import { triggerReloadCategories } from './crawler.service.js';
 
 dotenv.config({

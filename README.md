@@ -22,20 +22,23 @@ mercari-alert-bot/
 │   │   │   ├── role.middleware.js       # Phân quyền (Authorization)
 │   │   │   ├── expiry.middleware.js     # Kiểm tra tài khoản hết hạn (expiredAt)
 │   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
-│   │   ├── controllers/                 # Tầng xử lý Request và trả về Response
-│   │   │   ├── user.controller.js       # Controller điều phối cho User (Đăng nhập/Đăng ký/Quản lý)
-│   │   │   ├── category.controller.js   # Controller điều phối cho danh mục
-│   │   │   └── item.controller.js       # Controller điều phối cho Items đã crawl
-│   │   ├── routes/                      # Định nghĩa các API endpoints
-│   │   │   ├── user.routes.js           # Routes cho User & Auth
-│   │   │   ├── category.routes.js       # Routes cho danh mục
-│   │   │   └── item.routes.js           # Routes cho Items
-│   │   ├── services/                    # Tầng nghiệp vụ & Các tiến trình chạy nền độc lập
-│   │   │   ├── user.service.js          # Service xử lý logic User
-│   │   │   ├── category.service.js      # Service thao tác với DB PostgreSQL
-│   │   │   ├── item.service.js          # Service quản lý Items (xem, thống kê, dọn dẹp)
-│   │   │   ├── itemManager.service.js   # Service quản lý cache và Sliding Window cho Item
-│   │   │   └── crawler.service.js       # Cỗ máy Playwright quét dữ liệu & quản lý Event-Driven Cache
+│   │   ├── modules/                     # Tầng Module chứa các tính năng độc lập (Feature-driven)
+│   │   │   ├── user/                    # Module User (Đăng nhập/Đăng ký/Quản lý)
+│   │   │   │   ├── user.controller.js
+│   │   │   │   ├── user.routes.js
+│   │   │   │   └── user.service.js
+│   │   │   ├── category/                # Module Category (Quản lý cấu hình tìm kiếm)
+│   │   │   │   ├── category.controller.js
+│   │   │   │   ├── category.routes.js
+│   │   │   │   └── category.service.js
+│   │   │   ├── item/                    # Module Item (Quản lý các items đã cào)
+│   │   │   │   ├── item.controller.js
+│   │   │   │   ├── item.routes.js
+│   │   │   │   └── item.service.js
+│   │   │   └── crawler/                 # Module Crawler & Telegram Bot
+│   │   │       ├── crawler.service.js   # Cỗ máy Playwright quét dữ liệu & Cache
+│   │   │       ├── itemManager.service.js # Quản lý Sliding Window cho Item
+│   │   │       └── telegramBot.service.js # Bot gửi thông báo Telegram
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
 │   │   └── app.js                       # Cấu hình Express (Helmet, Rate Limit, Health Check)

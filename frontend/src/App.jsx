@@ -1,26 +1,26 @@
-import Dashboard from './pages/Dashboard';
-import { Toaster, toast } from 'sonner';
-import { Button } from './components/common/Button';
-import { BellRing } from 'lucide-react';
+import { Routes, Route } from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { MainLayout } from './components/layout/MainLayout/MainLayout';
+import { WelcomeTab } from './pages/Dashboard/WelcomeTab/WelcomeTab';
+import { CategoryTab } from './pages/Dashboard/CategoryTab/CategoryTab';
+import { KeywordTab } from './pages/Dashboard/KeywordTab/KeywordTab';
+import { NotificationsTab } from './pages/Dashboard/NotificationsTab/NotificationsTab';
+import { SettingsTab } from './pages/Dashboard/SettingsTab/SettingsTab';
 
 function App() {
   return (
-    <div style={{ padding: '2rem' }}>
-      <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem' }}>
-        <Button 
-          icon={<BellRing size={16} />} 
-          onClick={() => toast.success('Thông báo test thành công!')}
-        >
-          Test Toast
-        </Button>
-        <Button variant="danger" onClick={() => toast.error('Lỗi mẫu hiển thị!')}>
-          Lỗi Demo
-        </Button>
-      </div>
-
-      <Dashboard />
+    <>
+      <Routes>
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<WelcomeTab />} />
+          <Route path="category" element={<CategoryTab />} />
+          <Route path="keyword" element={<KeywordTab />} />
+          <Route path="notifications" element={<NotificationsTab />} />
+          <Route path="settings" element={<SettingsTab />} />
+        </Route>
+      </Routes>
       <Toaster richColors position="top-right" />
-    </div>
+    </>
   );
 }
 

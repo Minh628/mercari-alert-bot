@@ -1,0 +1,15 @@
+@use '../../../styles/variables' as *;
+
+.header {
+    padding: 20px 50px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(42, 42, 42, 0.5);
+    backdrop-filter: blur(10px);
+
+    .header-title {
+        font-size: 24px;
+        font-weight: 600;
+    }
+}

@@ -1,0 +1,53 @@
+@use '../../../styles/variables' as *;
+
+.btn {
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    /* Sizes */
+    &.size-md {
+        padding: 12px 28px;
+    }
+    &.size-sm {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+
+    /* Variants */
+    &.variant-primary {
+        background: linear-gradient(135deg, var(--primary-red), #ff6b6b);
+        color: white;
+        box-shadow: 0 4px 15px var(--primary-red-glow);
+        border-radius: 30px; // Login btn style
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px var(--primary-red-glow);
+        }
+    }
+
+    &.variant-outline {
+        background-color: transparent;
+        color: var(--primary-red);
+        border: 2px solid var(--primary-red);
+
+        &:hover {
+            background-color: var(--primary-red);
+            color: white;
+            box-shadow: 0 0 20px var(--primary-red-glow);
+        }
+    }
+
+    &.full-width {
+        width: 100%;
+        margin-top: 10px;
+    }
+}

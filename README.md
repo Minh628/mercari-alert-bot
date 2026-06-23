@@ -46,20 +46,24 @@ mercari-alert-bot/
 │   ├── package.json                     # Quản lý dependencies và scripts của Backend
 │   └── server.js                        # Entry Point + Graceful Shutdown (SIGTERM/SIGINT)
 │
-└── frontend/                            # Mã nguồn Frontend (Giao diện React)
+└── frontend/                            # Mã nguồn Frontend (React + Vite)
     ├── public/                          # Chứa tài nguyên tĩnh (static files)
     ├── src/                             # Thư mục mã nguồn chính của Frontend
-    │   ├── assets/                      # Hình ảnh, icon và logo của ứng dụng
-    │   ├── pages/                       # Các trang chính của giao diện
-    │   │   └── Dashboard.jsx            # Trang Dashboard chính hiển thị và quản lý danh sách từ khóa
-    │   ├── services/                    # Quản lý gọi API sang Backend
-    │   │   └── api.js                   # Cấu hình Axios Instance và định nghĩa các hàm gọi API
-    │   ├── App.jsx                      # Component gốc chính của React
-    │   ├── main.css                     # Định nghĩa styles CSS toàn cục
-    │   └── main.jsx                     # Điểm khởi chạy (Entry Point) của Frontend React
-    ├── index.html                       # File HTML chính làm khung chứa React App
-    ├── vite.config.js                   # File cấu hình cho Vite bundler
-    └── package.json                     # Quản lý dependencies và scripts của Frontend
+    │   ├── components/                  # Các Reusable Components (Kiến trúc Colocation .jsx đi kèm .scss)
+    │   │   ├── common/                  # Component nhỏ lẻ (Button, Card, InputField, ToggleSwitch...)
+    │   │   └── layout/                  # Khung sườn giao diện (Sidebar, Header, MainLayout)
+    │   ├── pages/                       # Các màn hình chính phân theo Router
+    │   │   └── Dashboard/               # Dashboard với các Tab (WelcomeTab, CategoryTab, KeywordTab...)
+    │   ├── styles/                      # Global Styles & Variables (Root Colors, Neon Mixins)
+    │   │   ├── _variables.scss          # Biến SCSS toàn cục
+    │   │   └── main.scss                # File CSS gốc chứa Reset & Import Variables
+    │   ├── services/                    # Gọi API Backend (Axios/Fetch)
+    │   │   └── api.js                   
+    │   ├── App.jsx                      # Component gốc thiết lập Routes
+    │   └── main.jsx                     # Điểm khởi chạy (Entry Point)
+    ├── index.html                       # File HTML gốc
+    ├── vite.config.js                   # Cấu hình cho Vite bundler
+    └── package.json                     # Quản lý thư viện Frontend
 ```
 
 ---

@@ -1,6 +1,5 @@
-import categoryRoutes from '../modules/category/category.routes.js';
+import followRoutes from '../modules/follow/follow.routes.js';
 import userRoutes from '../modules/user/user.routes.js';
-import itemRoutes from '../modules/item/item.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng
@@ -8,9 +7,8 @@ import itemRoutes from '../modules/item/item.routes.js';
  */
 export const setupRoutes = (app) => {
     // --- Routes Mounting ---
-    app.use('/api/categories', categoryRoutes);
+    app.use('/api/follows', followRoutes);
     app.use('/api/users', userRoutes);
-    app.use('/api/items', itemRoutes);
 
 
     // Route mặc định kiểm tra server

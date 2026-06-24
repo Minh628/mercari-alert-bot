@@ -21,10 +21,10 @@ let isRunning = true;
 let isCrawling = false;
 
 // --- STATE QUẢN LÝ ---
-let activeCategories = [];
+let activeFollows = [];
 
 let activePage = null;
-// ✅ Thay thế biến đơn bằng Map để lưu cấu hình API cho từng Category
+// ✅ Thay thế biến đơn bằng Map để lưu cấu hình API cho từng Follow
 const apiConfigsCache = new Map(); 
 let scanCount = 0;
 
@@ -117,8 +117,8 @@ async function checkAndHandleNightSleep() {
 
 export async function triggerReloadCategories() {
     try {
-        console.log("🔄 [Worker] Nhận tín hiệu, đang tải lại Categories từ Database...");
-        activeCategories = await prisma.category.findMany({
+        console.log("🔄 [Worker] Nhận tín hiệu, đang tải lại Follows từ Database...");
+        activeFollows = await prisma.follow.findMany({
             where: {
                 isActive: true,
                 user: {
@@ -131,6 +131,7 @@ export async function triggerReloadCategories() {
             orderBy: { id: 'desc' },
             select: {
                 id: true,
+                keyword: true,
                 categoryId: true,
                 itemConditionId: true,
                 status: true,
@@ -145,36 +146,37 @@ export async function triggerReloadCategories() {
                 }
             }
         });
-        console.log(`✅ [Worker] Đã tải ${activeCategories.length} Categories vào RAM.`);
+        console.log(`✅ [Worker] Đã tải ${activeFollows.length} Follows vào RAM.`);
 
-        for (const cat of activeCategories) {
-            await itemManagerService.preloadCache(cat.id);
+        for (const f of activeFollows) {
+            await itemManagerService.preloadCache(f.id);
         }
-        console.log(`✅ [Worker] Đã preload cache cho ${activeCategories.length} categories.`);
+        console.log(`✅ [Worker] Đã preload cache cho ${activeFollows.length} follows.`);
 
         if (activePage) {
             await resetActivePage();
-            console.log(`🧹 [Worker] Đã reset Tab do Category thay đổi.`);
+            console.log(`🧹 [Worker] Đã reset Tab do Follow thay đổi.`);
         }
     } catch (error) {
-        console.error("❌ [Worker] Lỗi tải Categories:", error);
+        console.error("❌ [Worker] Lỗi tải Follows:", error);
     }
 }
 
 // Tự động nạp dữ liệu lúc khởi động
 triggerReloadCategories();
 
-function buildSearchUrl(category) {
+function buildSearchUrl(follow) {
     const params = new URLSearchParams();
-    params.set('category_id', category.categoryId);
+    if (follow.keyword) params.set('keyword', follow.keyword);
+    if (follow.categoryId) params.set('category_id', follow.categoryId);
     params.set('sort', 'created_time');
     params.set('order', 'desc');
 
-    if (category.itemConditionId) params.set('item_condition_id', category.itemConditionId);
-    if (category.status) params.set('status', category.status);
-    if (category.brandId) params.set('brand_id', category.brandId);
-    if (category.priceMin != null) params.set('price_min', category.priceMin);
-    if (category.priceMax != null) params.set('price_max', category.priceMax);
+    if (follow.itemConditionId) params.set('item_condition_id', follow.itemConditionId);
+    if (follow.status) params.set('status', follow.status);
+    if (follow.brandId) params.set('brand_id', follow.brandId);
+    if (follow.priceMin != null) params.set('price_min', follow.priceMin);
+    if (follow.priceMax != null) params.set('price_max', follow.priceMax);
 
     return `https://jp.mercari.com/search?${params.toString()}`;
 }
@@ -204,11 +206,12 @@ async function getOrCreateBrowser() {
     return { browser: persistentBrowser, context: persistentContext };
 }
 
-async function sendBatchTelegram(items, category, telegramId) {
+async function sendBatchTelegram(items, follow, telegramId) {
     const chunkSize = CHUNK_SIZE;
     for (let i = 0; i < items.length; i += chunkSize) {
         const chunk = items.slice(i, i + chunkSize);
-        let messageText = `🔥 [MỚI] Tìm thấy ${chunk.length} món cho "${category.categoryId}":\n\n`;
+        const displayName = follow.keyword || `Category ${follow.categoryId}`;
+        let messageText = `🔥 [MỚI] Tìm thấy ${chunk.length} món cho "${displayName}":\n\n`;
 
         chunk.forEach((item, index) => {
             messageText += formatItemMessage(item, index, i);
@@ -226,12 +229,12 @@ async function sendBatchTelegram(items, category, telegramId) {
     console.log(`📲 Đã gửi Batching ${items.length} món cho Telegram ${telegramId}`);
 }
 
-async function parseMercariData(data, category, isColdStart) {
+async function parseMercariData(data, follow, isColdStart) {
     let newItemsBatch = [];
     if (data && data.items) {
         for (const item of data.items) {
             if (item.status === 'ITEM_STATUS_ON_SALE') {
-                const isNewItem = await itemManagerService.processNewItem(category.id, item.id);
+                const isNewItem = await itemManagerService.processNewItem(follow.id, item.id);
                 if (isNewItem) {
                     console.log(`✈️ [Mới] ${item.name}`);
                     if (!isColdStart) {
@@ -333,16 +336,16 @@ async function clearDomGarbage(page) {
 /**
  * Tách logic lấy data từ page hoặc gọi fetch API nội bộ
  */
-async function fetchCategoryData(context, category, searchUrl) {
+async function fetchFollowData(context, follow, searchUrl) {
     let data;
-    let config = apiConfigsCache.get(category.id);
+    let config = apiConfigsCache.get(follow.id);
 
     if (!activePage || !config) {
-        // Lần đầu hoặc chưa có cache cho category này
+        // Lần đầu hoặc chưa có cache cho follow này
         const result = await setupAndGotoPage(context, searchUrl);
         activePage = result.page;
         data = result.data;
-        apiConfigsCache.set(category.id, result.apiConfig);
+        apiConfigsCache.set(follow.id, result.apiConfig);
     } else {
         console.log(`   -> [Action] Gọi API nội bộ bằng fetch() (tiết kiệm bandwidth)...`);
         const fetchResult = await executeInternalFetch(activePage, config);
@@ -355,7 +358,7 @@ async function fetchCategoryData(context, category, searchUrl) {
             const result = await setupAndGotoPage(context, searchUrl);
             activePage = result.page;
             data = result.data;
-            apiConfigsCache.set(category.id, result.apiConfig);
+            apiConfigsCache.set(follow.id, result.apiConfig);
         } else {
             data = fetchResult.data;
         }
@@ -366,8 +369,8 @@ async function fetchCategoryData(context, category, searchUrl) {
 /**
  * Helper xuất thông tin debug khi có lỗi trang
  */
-async function logPageDebugInfo(page, err, categoryId) {
-    console.log(`⚠️ Lỗi/Timeout khi quét [ID:${categoryId}]. Đang lấy log debug...`);
+async function logPageDebugInfo(page, err, followId) {
+    console.log(`⚠️ Lỗi/Timeout khi quét [ID:${followId}]. Đang lấy log debug...`);
     if (page) {
         try {
             const currentUrl = page.url();
@@ -382,29 +385,29 @@ async function logPageDebugInfo(page, err, categoryId) {
     console.log(`   -> [Recover] Đã xóa Tab lỗi. Sẽ goto() lại ở vòng sau.`);
 }
 
-async function scanSingleCategory(context, category) {
-    const cacheSize = itemManagerService.cache.get(category.id)?.size || 0;
+async function scanSingleFollow(context, follow) {
+    const cacheSize = itemManagerService.cache.get(follow.id)?.size || 0;
     const isColdStart = (cacheSize === 0);
 
     if (isColdStart) {
-        console.log(`❄️ [Cold Start] Khởi động nguội Category [ID:${category.id}]. Đang lấy mốc...`);
+        console.log(`❄️ [Cold Start] Khởi động nguội Follow [ID:${follow.id}]. Đang lấy mốc...`);
     }
 
-    const searchUrl = buildSearchUrl(category);
-    console.log(`🔄 Đang quét [ID:${category.id}]: → ${searchUrl}`);
+    const searchUrl = buildSearchUrl(follow);
+    console.log(`🔄 Đang quét [ID:${follow.id}]: → ${searchUrl}`);
 
     try {
-        const data = await fetchCategoryData(context, category, searchUrl);
-        const newItemsBatch = await parseMercariData(data, category, isColdStart);
+        const data = await fetchFollowData(context, follow, searchUrl);
+        const newItemsBatch = await parseMercariData(data, follow, isColdStart);
 
         if (!isColdStart && newItemsBatch.length > 0) {
-            const telegramId = category.user?.telegramId;
+            const telegramId = follow.user?.telegramId;
             console.log(`📩 [Worker] Đang chuẩn bị gửi Telegram cho user: ${telegramId}`);
             if (telegramId) {
-                await sendBatchTelegram(newItemsBatch, category, telegramId);
+                await sendBatchTelegram(newItemsBatch, follow, telegramId);
             }
         } else if (isColdStart) {
-            console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Category [ID:${category.id}]. Im lặng.`);
+            console.log(`✅ [Cold Start] Đã nạp xong mốc khởi điểm cho Follow [ID:${follow.id}]. Im lặng.`);
         }
 
         if (scanCount > 0 && scanCount % DOM_CLEAR_INTERVAL === 0 && activePage) {
@@ -412,7 +415,7 @@ async function scanSingleCategory(context, category) {
         }
 
     } catch (err) {
-        await logPageDebugInfo(activePage, err, category.id);
+        await logPageDebugInfo(activePage, err, follow.id);
         await resetActivePage();
     }
 }
@@ -421,8 +424,8 @@ async function scanSingleCategory(context, category) {
  * Chuẩn bị môi trường trước khi quét: kiểm tra rỗng và xả RAM định kỳ
  */
 async function prepareCrawlerEnvironment() {
-    if (activeCategories.length === 0) {
-        console.log("⏳ [Worker] Chưa có Category tìm kiếm nào trong RAM. Đang chờ...");
+    if (activeFollows.length === 0) {
+        console.log("⏳ [Worker] Chưa có Follow tìm kiếm nào trong RAM. Đang chờ...");
         return false;
     }
 
@@ -451,19 +454,19 @@ export async function startCrawlerLoop() {
     try {
         const { context } = await getOrCreateBrowser();
 
-        // ✅ Chạy qua tất cả các Categories
-        for (const category of activeCategories) {
+        // ✅ Chạy qua tất cả các Follows
+        for (const follow of activeFollows) {
             if (!isRunning) break; // Dừng giữa chừng nếu có lệnh stop
 
             // ✅ Kiểm tra nếu tài khoản User đã qua thời gian expiredAt thì bỏ qua
-            if (category.user?.expiredAt && new Date() > new Date(category.user.expiredAt)) {
+            if (follow.user?.expiredAt && new Date() > new Date(follow.user.expiredAt)) {
                 continue;
             }
 
-            await scanSingleCategory(context, category);
+            await scanSingleFollow(context, follow);
             scanCount++;
             
-            // Thêm delay nhỏ giữa các Category để tránh rate limit
+            // Thêm delay nhỏ giữa các Follow để tránh rate limit
             await randomDelay(1000, 2000); 
         }
 

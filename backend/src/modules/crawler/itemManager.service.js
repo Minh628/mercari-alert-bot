@@ -1,78 +1,57 @@
-import prisma from '../../config/prisma.js';
+
 
 class ItemManagerService {
   constructor() {
-    // RAM Cache: Map<CategoryId, Set<ItemId>>
+    // RAM Cache: Map<FollowId, Set<ItemId>>
     // Sử dụng Set để O(1) lookup và kiểm tra số lượng (size) nhanh chóng.
     this.cache = new Map();
 
-    // Cờ báo hiệu quá trình xóa (evict) đang diễn ra cho từng category.
+    // Cờ báo hiệu quá trình xóa (evict) đang diễn ra cho từng follow.
     // Tránh trường hợp gọi quá trình xóa nhiều lần đồng thời dẫn đến race condition (Thread-safe).
-    this.isEvicting = new Map(); // Map<CategoryId, Boolean>
+    this.isEvicting = new Map(); // Map<FollowId, Boolean>
   }
 
   /**
-   * Khởi tạo cache cho category nếu chưa tồn tại
-   * @param {number} categoryId 
+   * Khởi tạo cache cho follow nếu chưa tồn tại
+   * @param {number} followId 
    */
-  _initCache(categoryId) {
-    if (!this.cache.has(categoryId)) {
-      this.cache.set(categoryId, new Set());
+  _initCache(followId) {
+    if (!this.cache.has(followId)) {
+      this.cache.set(followId, new Set());
     }
   }
 
   /**
-   * Xử lý item mới: Check cache O(1), lưu DB, đẩy vào RAM cache và xử lý trượt (Sliding Window)
-   * @param {number} categoryId - ID của Category trong Database
+   * Xử lý item mới: Check cache O(1), đẩy vào RAM cache và xử lý trượt (Sliding Window)
+   * @param {number} followId - ID của Follow trong Database
    * @param {string} mercariItemId - ID của item trên Mercari (ví dụ: m1234567)
    * @returns {Promise<boolean>} true nếu là item mới, false nếu trùng lặp
    */
-  async processNewItem(categoryId, mercariItemId) {
-    this._initCache(categoryId);
-    const categoryCache = this.cache.get(categoryId);
+  async processNewItem(followId, mercariItemId) {
+    this._initCache(followId);
+    const followCache = this.cache.get(followId);
 
     // 1. O(1) Check: Kiểm tra sự tồn tại trong RAM cache
-    if (categoryCache.has(mercariItemId)) {
+    if (followCache.has(mercariItemId)) {
       return false; // Đã tồn tại, bỏ qua, không cần lưu DB
     }
 
     // 2. Thêm vào RAM cache (Tắt DB để giảm tải Neon Serverless)
-    categoryCache.add(mercariItemId);
+    followCache.add(mercariItemId);
     
-    // [COMMENT: KHÔNG LƯU DB NỮA ĐỂ TỐI ƯU CHI PHÍ NEON CU]
-    /*
-    try {
-      await prisma.item.create({
-        data: {
-          id: mercariItemId,
-          categoryId: categoryId
-        }
-      });
-      // Chỉ push vào cache sau khi chắc chắn DB đã lưu thành công
-      categoryCache.add(mercariItemId);
-    } catch (error) {
-      // Bắt lỗi Unique Constraint (P2002) của Prisma: 
-      // Xảy ra khi có request khác vừa mới ghi cùng item vào DB cho cùng category.
-      if (error.code === 'P2002') {
-        categoryCache.add(mercariItemId); // Vẫn cập nhật vào RAM cache
-        return false;
-      }
-      console.error(`[ItemManager] Lỗi lưu Database cho item ${mercariItemId}:`, error);
-      throw error;
-    }
-    */
 
-    // 3. SLIDING WINDOW (Luật 10000/9850): Nếu số lượng item trong RAM của category vượt quá 10000
-    if (categoryCache.size > 10000) {
-      // Đảm bảo tại một thời điểm chỉ có 1 tiến trình evict cho mỗi category
-      if (!this.isEvicting.get(categoryId)) {
-        this.isEvicting.set(categoryId, true);
+
+    // 3. SLIDING WINDOW (Luật 10000/9850): Nếu số lượng item trong RAM của follow vượt quá 10000
+    if (followCache.size > 10000) {
+      // Đảm bảo tại một thời điểm chỉ có 1 tiến trình evict cho mỗi follow
+      if (!this.isEvicting.get(followId)) {
+        this.isEvicting.set(followId, true);
 
         // Tiến trình evict chạy ngầm (write-behind), không block thời gian trả về của hàm.
-        this._evictOldItems(categoryId, categoryCache)
-          .catch(err => console.error(`[ItemManager] Lỗi evict cho category ${categoryId}:`, err))
+        this._evictOldItems(followId, followCache)
+          .catch(err => console.error(`[ItemManager] Lỗi evict cho follow ${followId}:`, err))
           .finally(() => {
-            this.isEvicting.set(categoryId, false); // Giải phóng cờ báo hiệu sau khi xong
+            this.isEvicting.set(followId, false); // Giải phóng cờ báo hiệu sau khi xong
           });
       }
     }
@@ -83,50 +62,22 @@ class ItemManagerService {
 
   /**
    * Xóa các items cũ nhất khỏi DB & RAM (Đưa tổng số lượng về mức an toàn 150)
-   * @param {number} categoryId 
-   * @param {Set<string>} categoryCache 
+   * @param {number} followId 
+   * @param {Set<string>} followCache 
    */
-  async _evictOldItems(categoryId, categoryCache) {
+  async _evictOldItems(followId, followCache) {
     // Tính số lượng cần xóa để RAM và DB hạ xuống mốc 150 (trừ hao phình to nếu có).
-    const deleteCount = Math.max(0, categoryCache.size - 150);
+    const deleteCount = Math.max(0, followCache.size - 150);
     if (deleteCount === 0) return;
 
-    // [COMMENT: KHÔNG TRUY VẤN VÀ XÓA TỪ DB NỮA]
-    /*
-    // Lấy `deleteCount` items cũ nhất của riêng categoryId này để xóa (tận dụng @@index)
-    const oldestItems = await prisma.item.findMany({
-      where: { categoryId: categoryId },
-      orderBy: { createdAt: 'asc' },
-      take: deleteCount,
-      select: { id: true }
-    });
-
-    if (oldestItems.length === 0) return;
-
-    const oldestItemIds = oldestItems.map(item => item.id);
-
-    // Xóa hàng loạt từ DB bằng một query duy nhất để tiết kiệm DB I/O
-    // Với Composite Key, deleteMany dùng where vẫn hoạt động bình thường
-    await prisma.item.deleteMany({
-      where: {
-        id: { in: oldestItemIds },
-        categoryId: categoryId // Đảm bảo an toàn, chỉ xóa đúng trong category này
-      }
-    });
-
-    // Xóa đúng 9850 items vừa tìm được ra khỏi RAM cache
-    for (const itemId of oldestItems.map(item => item.id)) {
-      categoryCache.delete(itemId);
-    }
-    */
 
     // Vì Set trong Javascript bảo toàn Insertion Order (phần tử thêm đầu tiên sẽ ở đầu).
     // Ta chỉ cần pop `deleteCount` phần tử từ trên đầu Set xuống.
-    const iterator = categoryCache.values();
+    const iterator = followCache.values();
     for (let i = 0; i < deleteCount; i++) {
       const oldestItem = iterator.next().value;
       if (oldestItem) {
-        categoryCache.delete(oldestItem);
+        followCache.delete(oldestItem);
       }
     }
   }
@@ -134,48 +85,21 @@ class ItemManagerService {
   /**
    * Nạp (preload) cache từ DB vào RAM khi server khởi động.
    * Giúp chống cold start và đồng bộ số lượng RAM so với DB hiện tại.
-   * @param {number} categoryId 
+   * @param {number} followId 
    */
-  async preloadCache(categoryId) {
-    // [COMMENT: KHÔNG PRELOAD TỪ DB NỮA - TẤT CẢ VỀ 0 LÀM COLD START TỰ NHIÊN]
-    /*
-    // Lấy TOÀN BỘ items của category này. Giúp RAM biết được trọn vẹn số lượng của DB.
-    const items = await prisma.item.findMany({
-      where: { categoryId: categoryId },
-      select: { id: true }
-    });
-
-    this._initCache(categoryId);
-    const categoryCache = this.cache.get(categoryId);
-    for (const item of items) {
-      categoryCache.add(item.id);
-    }
-
-    // Tự động dọn dẹp nếu phát hiện DB đã bị phình to (vượt 10000) từ các phiên trước
-    if (categoryCache.size > 10000) {
-      if (!this.isEvicting.get(categoryId)) {
-        this.isEvicting.set(categoryId, true);
-        this._evictOldItems(categoryId, categoryCache)
-          .catch(err => console.error(`[ItemManager] Lỗi dọn dẹp DB lúc khởi động category ${categoryId}:`, err))
-          .finally(() => {
-            this.isEvicting.set(categoryId, false);
-          });
-      }
-    }
-    */
-    
+  async preloadCache(followId) {
     // RAM trống = size 0 = Cold Start = Bot tự động nạp mốc mà không Spam Telegram.
-    this._initCache(categoryId);
+    this._initCache(followId);
   }
 
   /**
-   * Khởi động nguội: Xóa sạch bộ đệm RAM của category này khi người dùng tắt (Pause)
+   * Khởi động nguội: Xóa sạch bộ đệm RAM của follow này khi người dùng tắt (Pause)
    * Để lần sau bật lại (Resume), hệ thống sẽ tính là lượt đầu tiên và im lặng cào lại DB
-   * @param {number} categoryId 
+   * @param {number} followId 
    */
-  clearCache(categoryId) {
-    if (this.cache.has(categoryId)) {
-      this.cache.delete(categoryId);
+  clearCache(followId) {
+    if (this.cache.has(followId)) {
+      this.cache.delete(followId);
     }
   }
 }

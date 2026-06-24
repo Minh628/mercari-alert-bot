@@ -160,8 +160,8 @@ class UserService {
         role: true,
         createdAt: true,
         expiredAt: true,
-        // Đếm số lượng category của mỗi user
-        _count: { select: { categories: true } }
+        // Đếm số lượng follow của mỗi user
+        _count: { select: { follows: true } }
       }
     });
   }

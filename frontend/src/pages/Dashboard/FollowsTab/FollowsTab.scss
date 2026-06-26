@@ -1,0 +1,71 @@
+@use '../../../styles/variables' as *;
+
+.follows-tab {
+    animation: fadeIn 0.3s ease;
+
+    .grid-2col {
+        display: grid;
+        grid-template-columns: 2fr 1.2fr;
+        gap: 30px;
+    }
+
+    .left-column, .right-column {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .search-type-toggle {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            &.active {
+                background: rgba(255, 51, 102, 0.15); // primary-red with opacity
+                border-color: var(--primary-red);
+                color: var(--primary-red);
+                font-weight: 500;
+            }
+        }
+    }
+
+    .form-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+
+        .main-input {
+            width: 100%;
+        }
+
+        .price-inputs {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+
+            .separator {
+                color: var(--text-muted);
+            }
+
+            button {
+                margin-left: auto; /* Đẩy nút Submit sang góc phải */
+            }
+        }
+    }
+}

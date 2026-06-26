@@ -27,14 +27,10 @@ mercari-alert-bot/
 │   │   │   │   ├── user.controller.js
 │   │   │   │   ├── user.routes.js
 │   │   │   │   └── user.service.js
-│   │   │   ├── category/                # Module Category (Quản lý cấu hình tìm kiếm)
-│   │   │   │   ├── category.controller.js
-│   │   │   │   ├── category.routes.js
-│   │   │   │   └── category.service.js
-│   │   │   ├── item/                    # Module Item (Quản lý các items đã cào)
-│   │   │   │   ├── item.controller.js
-│   │   │   │   ├── item.routes.js
-│   │   │   │   └── item.service.js
+│   │   │   ├── follow/                  # Module Follow (Quản lý cấu hình tìm kiếm & theo dõi chung)
+│   │   │   │   ├── follow.controller.js
+│   │   │   │   ├── follow.routes.js
+│   │   │   │   └── follow.service.js
 │   │   │   └── crawler/                 # Module Crawler & Telegram Bot
 │   │   │       ├── crawler.service.js   # Cỗ máy Playwright quét dữ liệu & Cache
 │   │   │       ├── itemManager.service.js # Quản lý Sliding Window cho Item
@@ -56,7 +52,7 @@ mercari-alert-bot/
     │   │   ├── common/                  # Component nhỏ lẻ (Button, Card, InputField, ToggleSwitch...)
     │   │   └── layout/                  # Khung sườn giao diện (Sidebar, Header, MainLayout)
     │   ├── pages/                       # Các màn hình chính phân theo Router
-    │   │   └── Dashboard/               # Dashboard với các Tab (WelcomeTab, CategoryTab, KeywordTab...)
+    │   │   └── Dashboard/               # Dashboard với các Tab (WelcomeTab, FollowsTab, SettingsTab...)
     │   ├── styles/                      # Global Styles & Variables (Root Colors, Neon Mixins)
     │   │   ├── _variables.scss          # Biến SCSS toàn cục
     │   │   └── main.scss                # File CSS gốc chứa Reset & Import Variables
@@ -110,7 +106,12 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 ---
 
 ## 📋 Thay đổi gần đây
-      
+- **Authentication Toàn Diện**: Triển khai `AuthContext` (React Context API) kết hợp `localStorage` để quản lý trạng thái đăng nhập toàn cục.
+- **Bảo Vệ Route (Protected Route)**: Áp dụng component `<ProtectedRoute>` chặn người dùng chưa đăng nhập truy cập vào các trang cấu hình (Search Configs, Notifications, Settings).
+- **Trải Nghiệm Đăng Nhập**: Cập nhật form Đăng nhập để gọi API thực tế. Header hiển thị tên user và nút Logout sau khi đăng nhập.
+- **Tự Động Đăng Xuất**: Thêm Interceptor cho Axios tự động xóa phiên và đưa về `/login` nếu token hết hạn (nhận mã lỗi 401).
+- **Settings & Notifications**: Cập nhật SettingsTab thành tính năng Đổi Mật Khẩu, NotificationsTab tự động lấy và cập nhật Telegram Chat ID.
+
 ## 🚀 Hướng dẫn Deploy Lên Production
 
 ### 1. Deploy Backend Lên Render (Web Service)
@@ -150,21 +151,14 @@ Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependen
 | `PUT` | `/:id` | 👑 | Admin sửa thông tin User | `{ password?, telegramId?, role?, expiredAt? }` |
 | `DELETE` | `/:id` | 👑 | Admin xóa User | — |
 
-### 2. Categories (`/api/categories`)
+### 2. Follows (`/api/follows`)
 | Method | Endpoint | Quyền | Mô tả | Body |
 |--------|----------|-------|-------|------|
-| `GET` | `/` | 🔑 | Lấy danh sách Category của mình | — |
-| `POST` | `/` | 🔑 | Thêm Category tìm kiếm mới | `{ categoryId, itemConditionId?, status?, brandId?, priceMin?, priceMax?, isActive? }` |
-| `PUT` | `/:id` | 🔑 | Cập nhật Category (chỉ của mình) | `{ ...các trường cần sửa }` |
-| `DELETE` | `/:id` | 🔑 | Xóa Category (chỉ của mình) | — |
-| `GET` | `/all` | 👑 | Admin xem tất cả Categories của mọi User | — |
-
-### 3. Items (`/api/items`)
-| Method | Endpoint | Quyền | Mô tả | Query |
-|--------|----------|-------|-------|-------|
-| `GET` | `/:categoryId` | 🔑 | Xem Items của 1 Category mình sở hữu | — |
-| `GET` | `/stats` | 👑 | Admin xem thống kê Items | — |
-| `DELETE` | `/cleanup` | 👑 | Admin dọn dẹp Items cũ | `?days=7` |
+| `GET` | `/` | 🔑 | Lấy danh sách cấu hình Follow của mình | — |
+| `POST` | `/` | 🔑 | Thêm Follow tìm kiếm mới | `{ keyword?, categoryId?, itemConditionId?, status?, brandId?, priceMin?, priceMax?, isActive? }` |
+| `PUT` | `/:id` | 🔑 | Cập nhật cấu hình Follow | `{ ...các trường cần sửa }` |
+| `DELETE` | `/:id` | 🔑 | Xóa Follow | — |
+| `GET` | `/all` | 👑 | Admin xem tất cả cấu hình Follow của mọi User | — |
 
 ### 4. Health Check
 | Method | Endpoint | Quyền | Mô tả |

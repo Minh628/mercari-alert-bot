@@ -9,11 +9,8 @@ export const Sidebar = () => {
             <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end>
                 Dashboard
             </NavLink>
-            <NavLink to="/category" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                Category
-            </NavLink>
-            <NavLink to="/keyword" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                Keyword
+            <NavLink to="/follows" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                Search Configs
             </NavLink>
             <NavLink to="/notifications" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                 Notifications

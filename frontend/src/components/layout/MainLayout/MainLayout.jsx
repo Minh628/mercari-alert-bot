@@ -10,8 +10,7 @@ export const MainLayout = () => {
     const getPageTitle = () => {
         switch (location.pathname) {
             case '/': return 'Welcome Dashboard';
-            case '/category': return 'Category Tracking';
-            case '/keyword': return 'Keyword Tracking';
+            case '/follows': return 'Search Configs';
             case '/notifications': return 'System Notifications';
             case '/settings': return 'Bot Settings';
             default: return 'Dashboard';

@@ -1,9 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../../components/common/Card/Card';
 import { ToggleSwitch } from '../../../components/common/ToggleSwitch/ToggleSwitch';
+import { useAuth } from '../../../contexts/AuthContext';
+import { toast } from 'sonner';
 import './WelcomeTab.scss';
 
 export const WelcomeTab = () => {
+    const { isAuthenticated } = useAuth();
+    const navigate = useNavigate();
+    const [botActive, setBotActive] = useState(true);
+
+    const handleToggle = (e) => {
+        if (!isAuthenticated) {
+            toast.error("Vui lòng đăng nhập để thao tác bật/tắt BOT!");
+            navigate('/login');
+            return;
+        }
+        setBotActive(e.target.checked);
+        toast.success(e.target.checked ? "BOT đã BẬT!" : "BOT đã TẮT!");
+    };
+
     return (
         <div className="welcome-tab">
             <div className="hero">
@@ -15,7 +32,7 @@ export const WelcomeTab = () => {
                 <div className="step-card">
                     <div className="step-number">1</div>
                     <div className="step-title">Thêm mục tiêu săn hàng</div>
-                    <div className="step-desc">Chuyển sang tab <strong>Category</strong> hoặc <strong>Keyword</strong> để thêm ID chuyên mục hoặc Từ khóa sản phẩm bạn muốn theo dõi.</div>
+                    <div className="step-desc">Chuyển sang tab <strong>Search Configs</strong> để thêm ID chuyên mục hoặc Từ khóa sản phẩm bạn muốn theo dõi.</div>
                 </div>
                 <div className="step-card">
                     <div className="step-number">2</div>
@@ -40,14 +57,20 @@ export const WelcomeTab = () => {
                 
                 <Card 
                     title="Trạng thái BOT" 
-                    extra={<ToggleSwitch defaultChecked />}
+                    extra={<ToggleSwitch checked={isAuthenticated ? botActive : false} onChange={handleToggle} />}
                 >
                     <p style={{ color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1.6, marginBottom: '20px' }}>
-                        Hệ thống Crawler Core đang chạy ngầm.
+                        {isAuthenticated && botActive ? 'Hệ thống Crawler Core đang chạy ngầm.' : 'Hệ thống hiện đang tạm dừng.'}
                     </p>
-                    <div style={{ marginTop: 'auto', padding: '15px', background: 'rgba(0, 255, 128, 0.1)', border: '1px solid rgba(0, 255, 128, 0.2)', borderRadius: '12px', color: '#00ff80', fontSize: '14px', fontWeight: 600, textAlign: 'center' }}>
-                        Active & Running
-                    </div>
+                    {isAuthenticated && botActive ? (
+                        <div style={{ marginTop: 'auto', padding: '15px', background: 'rgba(0, 255, 128, 0.1)', border: '1px solid rgba(0, 255, 128, 0.2)', borderRadius: '12px', color: '#00ff80', fontSize: '14px', fontWeight: 600, textAlign: 'center' }}>
+                            Active & Running
+                        </div>
+                    ) : (
+                        <div style={{ marginTop: 'auto', padding: '15px', background: 'rgba(255, 51, 102, 0.1)', border: '1px solid rgba(255, 51, 102, 0.2)', borderRadius: '12px', color: '#ff3366', fontSize: '14px', fontWeight: 600, textAlign: 'center' }}>
+                            Stopped
+                        </div>
+                    )}
                 </Card>
             </div>
         </div>

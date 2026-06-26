@@ -1,15 +1,48 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../../components/common/Card/Card';
 import { InputField } from '../../../components/common/InputField/InputField';
 import { Button } from '../../../components/common/Button/Button';
 import { ToggleSwitch } from '../../../components/common/ToggleSwitch/ToggleSwitch';
 import { LogBox } from '../../../components/common/LogBox/LogBox';
+import { userService } from '../../../services/user.service';
+import { toast } from 'sonner';
 import './NotificationsTab.scss';
 
 export const NotificationsTab = () => {
+    const [telegramId, setTelegramId] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFetching, setIsFetching] = useState(true);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const data = await userService.getProfile();
+                if (data && data.telegramId) {
+                    setTelegramId(data.telegramId);
+                }
+            } catch (error) {
+                // Handled in interceptor
+            } finally {
+                setIsFetching(false);
+            }
+        };
+        fetchProfile();
+    }, []);
+
+    const handleSave = async () => {
+        setIsLoading(true);
+        try {
+            await userService.updateProfile({ telegramId });
+            toast.success("Đã cập nhật Telegram Chat ID thành công!");
+        } catch (error) {
+            // Handled
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const logs = [
-        { time: '13:00:00', level: 'success', message: 'Alert for [Category 885] sent to ID 987654321.' },
-        { time: '12:45:11', level: 'success', message: 'Alert for [Nintendo Switch] sent to ID 987654321.' },
+        { time: new Date().toLocaleTimeString(), level: 'info', message: 'Hệ thống Notification đã sẵn sàng.' }
     ];
 
     return (
@@ -17,15 +50,24 @@ export const NotificationsTab = () => {
             <div className="grid-2col">
                 <div className="left-column">
                     <Card title="Telegram Webhook Setup">
-                        <InputField label="Telegram Bot Token" value="123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ" disabled />
-                        <InputField label="Your Telegram Chat ID" defaultValue="987654321" />
+                        <InputField label="Telegram Bot Token" value="Sẽ được cấu hình bởi Admin" disabled />
+                        
+                        <InputField 
+                            label="Your Telegram Chat ID" 
+                            placeholder="Ví dụ: 987654321" 
+                            value={telegramId}
+                            onChange={(e) => setTelegramId(e.target.value)}
+                            disabled={isFetching}
+                        />
                         
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '20px 0' }}>
-                            <span style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: 500 }}>Enable Notifications</span>
+                            <span style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: 500 }}>Bật / Tắt thông báo</span>
                             <ToggleSwitch defaultChecked />
                         </div>
                         
-                        <Button fullWidth>Save Changes</Button>
+                        <Button variant="primary" fullWidth onClick={handleSave} disabled={isLoading || isFetching}>
+                            {isLoading ? 'Đang lưu...' : 'Lưu cài đặt'}
+                        </Button>
                     </Card>
                 </div>
                 <div className="right-column">

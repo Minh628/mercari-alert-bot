@@ -308,12 +308,19 @@ async function setupAndGotoPage(context, searchUrl) {
 async function executeInternalFetch(page, config) {
     return await page.evaluate(async (cfg) => {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), CRAWLER_TIMEOUT); // Timeout 45s
+
             const resp = await fetch(cfg.url, {
                 method: cfg.method,
                 headers: cfg.headers,
                 body: cfg.postData,
-                credentials: 'include'
+                credentials: 'include',
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
+
             if (!resp.ok) {
                 return { error: true, status: resp.status };
             }

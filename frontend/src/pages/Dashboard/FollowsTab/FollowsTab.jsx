@@ -4,7 +4,6 @@ import { InputField } from '../../../components/common/InputField/InputField';
 import { Button } from '../../../components/common/Button/Button';
 import { DataTable } from '../../../components/common/DataTable/DataTable';
 import { StatusBadge } from '../../../components/common/StatusBadge/StatusBadge';
-import { LogBox } from '../../../components/common/LogBox/LogBox';
 import { followService } from '../../../services/follow.service';
 import { toast } from 'sonner';
 import './FollowsTab.scss';
@@ -144,80 +143,68 @@ export const FollowsTab = () => {
         }
     ];
 
-    const logs = [
-        { time: new Date().toLocaleTimeString(), level: 'info', message: "Hệ thống Crawler đang ở chế độ chờ (Ngầm)." }
-    ];
-
     return (
         <div className="follows-tab">
-            <div className="grid-2col">
-                <div className="left-column">
-                    <Card title="Thêm Cấu Hình Theo Dõi Mới">
-                        {/* Khu vực chọn loại tìm kiếm (Toggle XOR) */}
-                        <div className="search-type-toggle">
-                            <button 
-                                className={`toggle-btn ${searchType === 'keyword' ? 'active' : ''}`}
-                                onClick={() => setSearchType('keyword')}
-                            >
-                                Theo Keyword
-                            </button>
-                            <button 
-                                className={`toggle-btn ${searchType === 'category' ? 'active' : ''}`}
-                                onClick={() => setSearchType('category')}
-                            >
-                                Theo Category
-                            </button>
-                        </div>
-
-                        {/* Khu vực nhập liệu (Dynamic Form) */}
-                        <div className="form-grid">
-                            <div className="form-row main-input">
-                                {searchType === 'keyword' ? (
-                                    <InputField 
-                                        placeholder="Nhập Keyword (Ví dụ: Nintendo)" 
-                                        value={keyword}
-                                        onChange={(e) => setKeyword(e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                ) : (
-                                    <InputField 
-                                        placeholder="Nhập Category ID (Ví dụ: 1101)" 
-                                        value={categoryId}
-                                        onChange={(e) => setCategoryId(e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                )}
-                            </div>
-                            
-                            <div className="form-row price-inputs">
-                                <InputField 
-                                    type="number"
-                                    placeholder="Giá từ (¥)" 
-                                    value={priceMin}
-                                    onChange={(e) => setPriceMin(e.target.value)}
-                                />
-                                <span className="separator">-</span>
-                                <InputField 
-                                    type="number"
-                                    placeholder="Giá đến (¥)" 
-                                    value={priceMax}
-                                    onChange={(e) => setPriceMax(e.target.value)}
-                                />
-                                <Button variant="primary" onClick={handleAdd}>Thêm Target</Button>
-                            </div>
-                        </div>
-                    </Card>
-
-                    <Card title={`Danh sách Cấu hình (${follows.length})`}>
-                        <DataTable columns={columns} data={follows} />
-                    </Card>
+            {/* Form thêm cấu hình - full width, không còn sidebar LogBox */}
+            <Card title="Thêm Cấu Hình Theo Dõi Mới" className="add-config-card">
+                {/* Khu vực chọn loại tìm kiếm (Toggle XOR) */}
+                <div className="search-type-toggle">
+                    <button 
+                        className={`toggle-btn ${searchType === 'keyword' ? 'active' : ''}`}
+                        onClick={() => setSearchType('keyword')}
+                    >
+                        Theo Keyword
+                    </button>
+                    <button 
+                        className={`toggle-btn ${searchType === 'category' ? 'active' : ''}`}
+                        onClick={() => setSearchType('category')}
+                    >
+                        Theo Category
+                    </button>
                 </div>
-                <div className="right-column">
-                    <Card title="Crawler System Logs">
-                        <LogBox logs={logs} tall />
-                    </Card>
+
+                {/* Khu vực nhập liệu (Horizontal layout khi full width) */}
+                <div className="form-inline">
+                    <div className="form-main-input">
+                        {searchType === 'keyword' ? (
+                            <InputField 
+                                placeholder="Nhập Keyword (Ví dụ: Nintendo)" 
+                                value={keyword}
+                                onChange={(e) => setKeyword(e.target.value)}
+                            />
+                        ) : (
+                            <InputField 
+                                placeholder="Nhập Category ID (Ví dụ: 1101)" 
+                                value={categoryId}
+                                onChange={(e) => setCategoryId(e.target.value)}
+                            />
+                        )}
+                    </div>
+                    <div className="form-price-group">
+                        <InputField 
+                            type="number"
+                            placeholder="Giá từ (¥)" 
+                            value={priceMin}
+                            onChange={(e) => setPriceMin(e.target.value)}
+                        />
+                        <span className="separator">—</span>
+                        <InputField 
+                            type="number"
+                            placeholder="Giá đến (¥)" 
+                            value={priceMax}
+                            onChange={(e) => setPriceMax(e.target.value)}
+                        />
+                    </div>
+                    <Button variant="primary" onClick={handleAdd} className="add-btn">
+                        + Thêm Target
+                    </Button>
                 </div>
-            </div>
+            </Card>
+
+            {/* Bảng danh sách - full width */}
+            <Card title={`Danh sách Cấu hình (${follows.length})`}>
+                <DataTable columns={columns} data={follows} />
+            </Card>
         </div>
     );
 };

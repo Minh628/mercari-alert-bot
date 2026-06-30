@@ -9,5 +9,10 @@ export const userService = {
         // data có thể là { password: 'new_pass' } hoặc { telegramId: 'new_id' }
         const response = await api.patch('/api/users/profile', data);
         return response.data.data;
+    },
+    // Bật/tắt bot - gửi isBotActive lên API
+    updateBotStatus: async (isBotActive) => {
+        const response = await api.patch('/api/users/profile', { isBotActive });
+        return response.data.data;
     }
 };

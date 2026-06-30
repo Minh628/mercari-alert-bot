@@ -2,17 +2,13 @@
 
 .follows-tab {
     animation: fadeIn 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 
-    .grid-2col {
-        display: grid;
-        grid-template-columns: 2fr 1.2fr;
-        gap: 30px;
-    }
-
-    .left-column, .right-column {
-        display: flex;
-        flex-direction: column;
-        gap: 30px;
+    // Card thêm cấu hình chiếm toàn bộ chiều rộng
+    .add-config-card {
+        width: 100%;
     }
 
     .search-type-toggle {
@@ -26,7 +22,7 @@
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: var(--text-muted);
-            padding: 8px 16px;
+            padding: 8px 20px;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -37,7 +33,7 @@
             }
 
             &.active {
-                background: rgba(255, 51, 102, 0.15); // primary-red with opacity
+                background: rgba(255, 51, 102, 0.15);
                 border-color: var(--primary-red);
                 color: var(--primary-red);
                 font-weight: 500;
@@ -45,27 +41,44 @@
         }
     }
 
-    .form-grid {
+    // Layout ngang: input chính + giá + nút thêm trên 1 hàng
+    .form-inline {
         display: flex;
-        flex-direction: column;
-        gap: 15px;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
 
-        .main-input {
-            width: 100%;
+        .form-main-input {
+            flex: 2;
+            min-width: 200px;
         }
 
-        .price-inputs {
+        .form-price-group {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 10px;
+            flex: 1.5;
+            min-width: 260px;
 
             .separator {
                 color: var(--text-muted);
+                flex-shrink: 0;
+                font-size: 18px;
             }
 
-            button {
-                margin-left: auto; /* Đẩy nút Submit sang góc phải */
+            // Mỗi input giá chiếm đều nhau
+            > div {
+                flex: 1;
             }
+        }
+
+        .add-btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+            padding: 12px 24px;
+            // Căn chỉnh đồng đều với các input field
+            align-self: flex-end;
+            margin-bottom: 0;
         }
     }
 }

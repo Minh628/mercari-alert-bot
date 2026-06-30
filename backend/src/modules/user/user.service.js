@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../../config/prisma.js';
 import ApiError from '../../utils/ApiError.js';
+import { triggerReloadCategories } from '../crawler/crawler.service.js';
 
 class UserService {
   /**
@@ -100,6 +101,7 @@ class UserService {
         username: true,
         telegramId: true,
         role: true,
+        isBotActive: true, // Trả về trạng thái bot để frontend hiển thị đúng
         createdAt: true,
         expiredAt: true
       }
@@ -119,7 +121,7 @@ class UserService {
   async updateSelfProfile(userId, data) {
     const updateData = {};
 
-    // Chỉ chấp nhận 2 trường được phép
+    // Chỉ chấp nhận các trường được whitelist
     if (data.password) {
       updateData.password = await this._hashPassword(data.password);
     }
@@ -129,8 +131,23 @@ class UserService {
       updateData.telegramId = data.telegramId;
     }
 
+    // isBotActive: cho phép Member bật/tắt bot, nhưng phải kiểm tra tài khoản còn hạn
+    if (data.isBotActive !== undefined) {
+      if (data.isBotActive === true) {
+        // Kiểm tra tài khoản chưa hết hạn mới cho bật bot
+        const currentUser = await prisma.user.findUnique({
+          where: { id: parseInt(userId, 10) },
+          select: { expiredAt: true, role: true }
+        });
+        if (currentUser && currentUser.role !== 'ADMIN' && new Date() > new Date(currentUser.expiredAt)) {
+          throw new ApiError(403, 'Tài khoản đã hết hạn, không thể bật bot. Vui lòng liên hệ Admin.');
+        }
+      }
+      updateData.isBotActive = data.isBotActive;
+    }
+
     if (Object.keys(updateData).length === 0) {
-      throw new ApiError(400, 'Không có trường hợp lệ để cập nhật (chỉ chấp nhận: password, telegramId)');
+      throw new ApiError(400, 'Không có trường hợp lệ để cập nhật (chỉ chấp nhận: password, telegramId, isBotActive)');
     }
 
     const user = await prisma.user.update({
@@ -140,10 +157,11 @@ class UserService {
         id: true,
         username: true,
         telegramId: true,
+        isBotActive: true,
         role: true
       }
     });
-
+    triggerReloadCategories()
     return user;
   }
 

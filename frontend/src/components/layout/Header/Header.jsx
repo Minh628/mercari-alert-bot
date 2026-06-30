@@ -14,7 +14,7 @@ export const Header = ({ title }) => {
             <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 {isAuthenticated ? (
                     <>
-                        <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: '18px', color: 'var(--text-muted)' }}>
                             Xin chào, <strong style={{ color: 'var(--text-main)' }}>{user?.username}</strong>
                         </span>
                         <Button variant="outline" onClick={logout}>Log Out</Button>

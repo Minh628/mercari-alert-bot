@@ -1,14 +1,15 @@
 import React from 'react';
 import './ToggleSwitch.scss';
 
-export const ToggleSwitch = ({ checked, onChange, defaultChecked }) => {
+export const ToggleSwitch = ({ checked, onChange, defaultChecked, disabled }) => {
     return (
-        <label className="switch">
+        <label className={`switch ${disabled ? 'disabled' : ''}`}>
             <input 
                 type="checkbox" 
                 checked={checked} 
                 onChange={onChange} 
-                defaultChecked={defaultChecked} 
+                defaultChecked={defaultChecked}
+                disabled={disabled}
             />
             <span className="slider"></span>
         </label>

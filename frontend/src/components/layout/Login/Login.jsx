@@ -22,6 +22,8 @@ export const Login = () => {
         if (success) {
             toast.success('Đăng nhập thành công!');
             navigate('/');
+        } else {
+            toast.error('Sai tên đăng nhập hoặc mật khẩu!');
         }
     };
 

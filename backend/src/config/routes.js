@@ -1,6 +1,6 @@
-import categoryRoutes from '../routes/category.routes.js';
-import userRoutes from '../routes/user.routes.js';
-import itemRoutes from '../routes/item.routes.js';
+import followRoutes from '../modules/follow/follow.routes.js';
+import userRoutes from '../modules/user/user.routes.js';
+import cronRoutes from '../modules/cron/cron.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng
@@ -8,10 +8,9 @@ import itemRoutes from '../routes/item.routes.js';
  */
 export const setupRoutes = (app) => {
     // --- Routes Mounting ---
-    app.use('/api/categories', categoryRoutes);
+    app.use('/api/follows', followRoutes);
     app.use('/api/users', userRoutes);
-    app.use('/api/items', itemRoutes);
-
+    app.use('/api/cron', cronRoutes);
 
     // Route mặc định kiểm tra server
     app.get('/', (req, res) => {

@@ -1,6 +1,6 @@
 # Mercari Alert Bot
 
-Dự án này là một hệ thống bot tự động cào thông tin (crawler) và cảnh báo sản phẩm trên Mercari dựa trên các từ khóa (keywords) được quản lý bởi người dùng. Dự án được chia làm 2 phần chính: **Backend** (Node.js/Express, Prisma, Playwright) và **Frontend** (React, Vite).
+Dự án này là một hệ thống bot tự động cào thông tin (crawler) và cảnh báo sản phẩm trên Mercari dựa trên các từ khóa (keywords) và Categories được quản lý bởi người dùng. Dự án được chia làm 2 phần chính: **Backend** (Node.js/Express, Prisma, Playwright) và **Frontend** (React, Vite).
 
 ---
 
@@ -21,21 +21,23 @@ mercari-alert-bot/
 │   │   │   ├── auth.middleware.js       # Xác thực JWT (Authentication)
 │   │   │   ├── role.middleware.js       # Phân quyền (Authorization)
 │   │   │   ├── expiry.middleware.js     # Kiểm tra tài khoản hết hạn (expiredAt)
-│   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
-│   │   ├── controllers/                 # Tầng xử lý Request và trả về Response
-│   │   │   ├── user.controller.js       # Controller điều phối cho User (Đăng nhập/Đăng ký/Quản lý)
-│   │   │   ├── category.controller.js   # Controller điều phối cho danh mục
-│   │   │   └── item.controller.js       # Controller điều phối cho Items đã crawl
-│   │   ├── routes/                      # Định nghĩa các API endpoints
-│   │   │   ├── user.routes.js           # Routes cho User & Auth
-│   │   │   ├── category.routes.js       # Routes cho danh mục
-│   │   │   └── item.routes.js           # Routes cho Items
-│   │   ├── services/                    # Tầng nghiệp vụ & Các tiến trình chạy nền độc lập
-│   │   │   ├── user.service.js          # Service xử lý logic User
-│   │   │   ├── category.service.js      # Service thao tác với DB PostgreSQL
-│   │   │   ├── item.service.js          # Service quản lý Items (xem, thống kê, dọn dẹp)
-│   │   │   ├── itemManager.service.js   # Service quản lý cache và Sliding Window cho Item
-│   │   │   └── crawler.service.js       # Cỗ máy Playwright quét dữ liệu & quản lý Event-Driven Cache
+│   │   │   ├── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
+│   │   │   └── cron.middleware.js       # Middleware bảo vệ Cron-job.org
+│   │   ├── modules/                     # Tầng Module chứa các tính năng độc lập (Feature-driven)
+│   │   │   ├── user/                    # Module User (Đăng nhập/Đăng ký/Quản lý)
+│   │   │   │   ├── user.controller.js
+│   │   │   │   ├── user.routes.js
+│   │   │   │   └── user.service.js
+│   │   │   ├── follow/                  # Module Follow (Quản lý cấu hình tìm kiếm & theo dõi chung)
+│   │   │   │   ├── follow.controller.js
+│   │   │   │   ├── follow.routes.js
+│   │   │   │   └── follow.service.js
+│   │   │   ├── cron/                    # Module Cron Job
+│   │   │   │   └── cron.routes.js
+│   │   │   └── crawler/                 # Module Crawler & Telegram Bot
+│   │   │       ├── crawler.service.js   # Cỗ máy Playwright quét dữ liệu & Cache
+│   │   │       ├── itemManager.service.js # Quản lý Sliding Window cho Item
+│   │   │       └── telegramBot.service.js # Bot gửi thông báo Telegram
 │   │   ├── utils/                       # Các hàm/lớp tiện ích dùng chung
 │   │   │   └── ApiError.js              # Lớp định nghĩa lỗi API tùy chỉnh (Custom API Error)
 │   │   └── app.js                       # Cấu hình Express (Helmet, Rate Limit, Health Check)
@@ -46,20 +48,25 @@ mercari-alert-bot/
 │   ├── package.json                     # Quản lý dependencies và scripts của Backend
 │   └── server.js                        # Entry Point + Graceful Shutdown (SIGTERM/SIGINT)
 │
-└── frontend/                            # Mã nguồn Frontend (Giao diện React)
+└── frontend/                            # Mã nguồn Frontend (React + Vite)
     ├── public/                          # Chứa tài nguyên tĩnh (static files)
     ├── src/                             # Thư mục mã nguồn chính của Frontend
-    │   ├── assets/                      # Hình ảnh, icon và logo của ứng dụng
-    │   ├── pages/                       # Các trang chính của giao diện
-    │   │   └── Dashboard.jsx            # Trang Dashboard chính hiển thị và quản lý danh sách từ khóa
-    │   ├── services/                    # Quản lý gọi API sang Backend
-    │   │   └── api.js                   # Cấu hình Axios Instance và định nghĩa các hàm gọi API
-    │   ├── App.jsx                      # Component gốc chính của React
-    │   ├── main.css                     # Định nghĩa styles CSS toàn cục
-    │   └── main.jsx                     # Điểm khởi chạy (Entry Point) của Frontend React
-    ├── index.html                       # File HTML chính làm khung chứa React App
-    ├── vite.config.js                   # File cấu hình cho Vite bundler
-    └── package.json                     # Quản lý dependencies và scripts của Frontend
+    │   ├── components/                  # Các Reusable Components (Kiến trúc Colocation .jsx đi kèm .scss)
+    │   │   ├── common/                  # Component nhỏ lẻ (Button, Card, InputField, ToggleSwitch...)
+    │   │   └── layout/                  # Khung sườn giao diện (Sidebar, Header, MainLayout)
+    │   ├── pages/                       # Các màn hình chính phân theo Router
+    │   │   └── Dashboard/               # Dashboard với các Tab (WelcomeTab, FollowsTab, SettingsTab...)
+    │   ├── styles/                      # Global Styles & Variables (Root Colors, Neon Mixins)
+    │   │   ├── _variables.scss          # Biến SCSS toàn cục
+    │   │   └── main.scss                # File CSS gốc chứa Reset & Import Variables
+    │   ├── services/                    # Gọi API Backend (Axios/Fetch)
+    │   │   └── api.js                   
+    │   ├── App.jsx                      # Component gốc thiết lập Routes
+    │   └── main.jsx                     # Điểm khởi chạy (Entry Point)
+    ├── index.html                       # File HTML gốc
+    ├── vite.config.js                   # Cấu hình cho Vite bundler
+    ├── vercel.json                      # Cấu hình định tuyến cho Vercel (chống 404)
+    └── package.json                     # Quản lý thư viện Frontend
 ```
 
 ---
@@ -104,47 +111,6 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 
 ## 📋 Thay đổi gần đây
 
-### [2026-06-15] Kiến trúc "Single Tab, API-Only" — Tối ưu cực hạn Bandwidth & RAM
-- **ARCH**: Loại bỏ hoàn toàn kiến trúc **Tab Pool (LRU Cache 3 tabs)**. Thay thế bằng kiến trúc **Single Tab**: Chỉ giữ đúng 1 tab Chromium duy nhất, tối ưu cho trường hợp sử dụng 1 user / 1 category.
-- **OPT**: Triển khai cơ chế **API-Only Fetch**: Chỉ `goto()` trang Mercari **1 lần duy nhất** để thiết lập session. Toàn bộ các vòng quét tiếp theo sử dụng `page.evaluate(fetch())` gọi thẳng API `entities:search` bên trong tab, **tiết kiệm ~98% bandwidth** (~10-20KB/lần thay vì ~500KB-1MB/lần).
-- **OPT**: Bổ sung cơ chế **Auto-Restart Browser** sau 200 vòng quét (~50 phút) để xả Memory Leak Chromium triệt để. Bổ sung **DOM Clear** định kỳ sau 100 vòng quét để giảm RAM mà vẫn giữ JS context cho `fetch()`.
-- **OPT**: Thêm cơ chế **Fallback tự động**: Nếu API trả lỗi 403/500 (session hết hạn), crawler tự động `goto()` lại để refresh session mà không cần can thiệp thủ công.
-- **REF**: Xóa bỏ ~60 dòng code thừa (`pagePool`, `getPageForCategory`, `MAX_TABS`, nhánh `reload()`). Thay bằng biến đơn giản `activePage` + `cachedApiConfig`.
-
-### [2026-06-15] Refactor Telegram Bot & Sửa lỗi Crash (409 Conflict)
-
-- **REF**: Refactor `telegramBot.service.js`: Loại bỏ truy vấn Prisma trực tiếp, phân tách logic DB sang `user.service.js` (hàm `updateBotStatusByTelegramId`) tuân thủ nghiêm ngặt nguyên tắc Clean Architecture.
-- **FIX**: Xử lý triệt để lỗi `ETELEGRAM: 409 Conflict` khi chạy Dev và Prod song song bằng cách bẫy sự kiện `polling_error`. Ứng dụng giờ đây sẽ in cảnh báo thay vì bị Crash/Exit Node.js.
-- **FIX**: Bổ sung cơ chế bắt tín hiệu `SIGUSR2` trong `server.js`, giúp Nodemon đóng ngắt kết nối Telegram cực kỳ sạch sẽ khi file thay đổi, không để lại tiến trình ma (zombie process).
-
-### [2026-06-15] ~~Tối ưu RAM & Cơ chế Reload cho Crawler~~ *(Đã thay thế bởi kiến trúc Single Tab API-Only ở trên)*
-- ~~**ARCH**: Triển khai kiến trúc Tab Pool (LRU Cache)~~ → Đã loại bỏ.
-- ~~**OPT**: Cơ chế `reload()` tái sử dụng~~ → Đã thay bằng `page.evaluate(fetch())`.
-- **FIX**: Tối ưu cấu hình khởi tạo Playwright Chromium: Xóa `--single-process` để chống xung đột tiến trình trên Docker, bổ sung `--js-flags=--max-old-space-size=128` khóa cứng RAM V8 *(vẫn giữ nguyên)*.
-
-
-### [2026-06-14] Crawler Debug & Tối ưu Timeout
-- **FIX**: Tăng `CRAWLER_TIMEOUT` lên 30s để bù đắp cho mạng chậm và CPU yếu trên gói Render Free, giúp Playwright có đủ thời gian load trang và API.
-- **FEAT**: Bổ sung cơ chế Debug mù (Blind Debug). Khi xảy ra lỗi Timeout/Crash, Crawler sẽ tự động in log chi tiết (URL hiện tại, Title trang) ra màn hình Console để dễ dàng phát hiện chặn Captcha (Cloudflare/Datadome).
-
-### [2026-06-14] Tính năng /startbot & /stopbot
-- **FEAT**: Thêm trường `isBotActive` vào model `User` để hỗ trợ cờ tắt bật bot.
-- **FEAT**: Tích hợp lệnh `/startbot` và `/stopbot` trên Telegram giúp người dùng tạm dừng nhận thông báo mà không làm mất cấu hình danh mục. Tối ưu crawler không cào dữ liệu cho những user đã tắt bot.
-- **FIX**: Xử lý triệt để lỗi crash hệ thống do TypeError khi `stopListening()` không trả về Promise lúc tắt server.
-
-### [2026-06-14] Refactor & Tối ưu hóa Crawler
-- **REF**: Phân tách logic trong `crawler.service.js` nhằm đảm bảo nguyên tắc SRP (Single Responsibility Principle) và loại bỏ "God Function".
-- **OPT**: Tách cấu hình khởi tạo trang (`setupCrawlerPage`) và phân tích dữ liệu Mercari (`parseMercariData`) thành các hàm độc lập.
-- **OPT**: Di chuyển toàn bộ Magic Numbers (ví dụ: timeout, delay) lên đầu file dưới dạng hằng số (`CRAWLER_TIMEOUT`, `DELAY_MIN`, `CRAWL_INTERVAL`) để quản lý tập trung.
-
-### [2026-06-14] Nâng cấp Kiến trúc Chịu tải Enterprise
-- **FIX**: Xử lý lỗi `400 Bad Request: message is too long` của Telegram bằng cơ chế Cắt tin nhắn (Chunking). Giới hạn mỗi tin nhắn chỉ chứa 20 món hàng, tự động ngắt nghỉ 1s giữa các tin chống block.
-- **OPT**: Refactor toàn diện `crawler.service.js`: Chẻ nhỏ siêu hàm `startCrawlerLoop` thành các module độc lập `scanSingleCategory` và `sendBatchTelegram`, tối ưu hóa hiệu suất và dễ bảo trì.
-- **FIX**: Xử lý triệt để lỗi Closure Leak & Race Condition: Bỏ hoàn toàn `page.on`, chuyển sang cơ chế Đồng bộ cục bộ (`waitForResponse`). Đảm bảo không bao giờ gửi nhầm khách hàng và không miss item.
-- **FEAT**: Áp dụng cơ chế **Khởi động nguội (Cold Start)**: Tự động xóa RAM khi Pause (`isActive=false`). Lượt quét tiếp theo sẽ coi là mốc khởi điểm và hoàn toàn im lặng, không spam Telegram.
-- **FEAT**: Triển khai cơ chế **Gom mẻ (Batching)**: Gom tất cả items mới trong 1 lượt cào thành 1 tin nhắn tổng hợp. Chống Rate Limit 429 tuyệt đối cho các từ khóa "siêu nóng" (10s/5 món).
-- **REF**: Refactor toàn diện thư mục `backend/src/services`: Chuyển `category.service.js` sang chuẩn kiến trúc OOP (Class), tối ưu DB I/O cho `user.service.js` (cắt giảm 50% số lượng query update/delete) và dọn dẹp mã lặp.
-
 ## 🚀 Hướng dẫn Deploy Lên Production
 
 ### 1. Deploy Backend Lên Render (Web Service)
@@ -157,15 +123,24 @@ Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependen
    - `DATABASE_URL`: Link kết nối tới Database Postgres (Neon, Supabase...).
    - `TELEGRAM_TOKEN`: Token bot Telegram của bạn.
    - `JWT_SECRET`: Chuỗi bảo mật ngẫu nhiên.
+   - `ALLOWED_ORIGINS`: Danh sách các domain được phép truy cập Backend (Ví dụ: `https://ten-mien.vercel.app,http://localhost:5173`).
+   - `CRON_SECRET_KEY`: Khóa bí mật dùng để xác thực request từ Cron-job.org (tự đặt 1 chuỗi ký tự dài).
 6. Render sẽ tự động build `Dockerfile`, cài thư viện OS, Playwright Chromium và khởi chạy.
+
+### Cấu hình Cron-job.org để giữ Server thức
+1. Tạo 1 job mới trên [cron-job.org](https://cron-job.org/).
+2. URL: `https://<ten-backend-render>/api/cron/ping`.
+3. Schedule: Mỗi 10 phút.
+4. Ở phần Advanced > Headers: Thêm 1 Header với Key là `x-cron-secret` và Value là chuỗi `CRON_SECRET_KEY` bạn đã cài trên Render.
 
 ### 2. Deploy Frontend Lên Vercel
 1. Vào Vercel, tạo Project mới và kết nối Repo Github.
 2. Root Directory: Chọn thư mục `frontend/`.
 3. Framework Preset: Để mặc định `Vite`.
 4. Biến môi trường (Environment Variables):
-   - Bắt buộc thêm biến `VITE_API_URL` trỏ tới đường link Backend bạn vừa lấy được từ Render (Ví dụ: `https://mercari-backend.onrender.com/api`).
-5. Deploy.
+   - Bắt buộc thêm biến `VITE_API_URL` trỏ tới đường link Backend bạn vừa lấy được từ Render (Ví dụ: `https://mercari-backend.onrender.com`).
+   *Lưu ý: Không để dấu `/` ở cuối biến `VITE_API_URL`.*
+5. Deploy. (Trong code đã có sẵn file `vercel.json` để fix lỗi 404 khi load lại trang cho ứng dụng React Router).
 
 ---
 
@@ -184,23 +159,17 @@ Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependen
 | `PUT` | `/:id` | 👑 | Admin sửa thông tin User | `{ password?, telegramId?, role?, expiredAt? }` |
 | `DELETE` | `/:id` | 👑 | Admin xóa User | — |
 
-### 2. Categories (`/api/categories`)
+### 2. Follows (`/api/follows`)
 | Method | Endpoint | Quyền | Mô tả | Body |
 |--------|----------|-------|-------|------|
-| `GET` | `/` | 🔑 | Lấy danh sách Category của mình | — |
-| `POST` | `/` | 🔑 | Thêm Category tìm kiếm mới | `{ categoryId, itemConditionId?, status?, brandId?, priceMin?, priceMax?, isActive? }` |
-| `PUT` | `/:id` | 🔑 | Cập nhật Category (chỉ của mình) | `{ ...các trường cần sửa }` |
-| `DELETE` | `/:id` | 🔑 | Xóa Category (chỉ của mình) | — |
-| `GET` | `/all` | 👑 | Admin xem tất cả Categories của mọi User | — |
+| `GET` | `/` | 🔑 | Lấy danh sách cấu hình Follow của mình | — |
+| `POST` | `/` | 🔑 | Thêm Follow tìm kiếm mới | `{ keyword?, categoryId?, itemConditionId?, status?, brandId?, priceMin?, priceMax?, isActive? }` |
+| `PUT` | `/:id` | 🔑 | Cập nhật cấu hình Follow | `{ ...các trường cần sửa }` |
+| `DELETE` | `/:id` | 🔑 | Xóa Follow | — |
+| `GET` | `/all` | 👑 | Admin xem tất cả cấu hình Follow của mọi User | — |
 
-### 3. Items (`/api/items`)
-| Method | Endpoint | Quyền | Mô tả | Query |
-|--------|----------|-------|-------|-------|
-| `GET` | `/:categoryId` | 🔑 | Xem Items của 1 Category mình sở hữu | — |
-| `GET` | `/stats` | 👑 | Admin xem thống kê Items | — |
-| `DELETE` | `/cleanup` | 👑 | Admin dọn dẹp Items cũ | `?days=7` |
-
-### 4. Health Check
-| Method | Endpoint | Quyền | Mô tả |
-|--------|----------|-------|-------|
-| `GET` | `/health` | 🔓 | Kiểm tra server còn sống (dùng UptimeRobot ping chống Render Sleep) |
+### 4. Health Check & Cron Job
+| Method | Endpoint | Quyền | Mô tả | Header |
+|--------|----------|-------|-------|--------|
+| `GET` | `/health` | 🔓 | Kiểm tra server còn sống (Public Health Check) | — |
+| `GET` | `/api/cron/ping` | 🔐 | Route chuyên dụng cho Cron-job.org để trigger/ping | `x-cron-secret` |

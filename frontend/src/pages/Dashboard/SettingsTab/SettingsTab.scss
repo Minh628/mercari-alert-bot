@@ -1,0 +1,17 @@
+@use '../../../styles/variables' as *;
+
+.settings-tab {
+    animation: fadeIn 0.3s ease;
+
+    .grid-2col {
+        display: grid;
+        grid-template-columns: 2fr 1.2fr;
+        gap: 30px;
+    }
+
+    .left-column {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+    }
+}

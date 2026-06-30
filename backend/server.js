@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import app from './src/app.js';
-import { startCrawlerLoop, stopCrawler } from './src/services/crawler.service.js';
-import telegramBotService from './src/services/telegramBot.service.js';
+import { startCrawlerLoop, stopCrawler } from './src/modules/crawler/crawler.service.js';
+import telegramBotService from './src/modules/crawler/telegramBot.service.js';
 import prisma from './src/config/prisma.js';
 
 // Load biến môi trường

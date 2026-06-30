@@ -1,0 +1,84 @@
+@use '../../../styles/variables' as *;
+
+.follows-tab {
+    animation: fadeIn 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    // Card thêm cấu hình chiếm toàn bộ chiều rộng
+    .add-config-card {
+        width: 100%;
+    }
+
+    .search-type-toggle {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            &.active {
+                background: rgba(255, 51, 102, 0.15);
+                border-color: var(--primary-red);
+                color: var(--primary-red);
+                font-weight: 500;
+            }
+        }
+    }
+
+    // Layout ngang: input chính + giá + nút thêm trên 1 hàng
+    .form-inline {
+        display: flex;
+        align-items: flex-end;
+        gap: 16px;
+        flex-wrap: wrap;
+
+        .form-main-input {
+            flex: 2;
+            min-width: 200px;
+        }
+
+        .form-price-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1.5;
+            min-width: 260px;
+
+            .separator {
+                color: var(--text-muted);
+                flex-shrink: 0;
+                font-size: 18px;
+            }
+
+            // Mỗi input giá chiếm đều nhau
+            > div {
+                flex: 1;
+            }
+        }
+
+        .add-btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+            padding: 12px 24px;
+            // Căn chỉnh đồng đều với các input field
+            align-self: flex-end;
+            margin-bottom: 0;
+        }
+    }
+}

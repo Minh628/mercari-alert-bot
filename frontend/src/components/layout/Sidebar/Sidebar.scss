@@ -1,0 +1,37 @@
+@use '../../../styles/variables' as *;
+
+.sidebar {
+    width: 260px;
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--border-color);
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+
+    .logo {
+        font-size: 22px;
+        font-weight: 800;
+        margin-bottom: 50px;
+        color: var(--primary-red);
+        text-shadow: 0 0 15px var(--primary-red-glow);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .nav-item {
+        padding: 15px 20px;
+        margin-bottom: 10px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 0.3s;
+        color: var(--text-muted);
+        font-weight: 500;
+        text-decoration: none;
+
+        &.active, &:hover {
+            background-color: rgba(255, 51, 102, 0.1);
+            color: var(--primary-red);
+        }
+    }
+}

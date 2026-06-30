@@ -13,46 +13,35 @@ enum Role {
 }
 
 model User {
-  id         Int        @id @default(autoincrement())
-  username   String     @unique
+  id         Int     @id @default(autoincrement())
+  username   String  @unique
   password   String
   telegramId String?
-  
+
   // 2. Thêm trường role, mặc định khách tạo tài khoản sẽ là MEMBER
-  role       Role       @default(MEMBER) 
-  
+  role Role @default(MEMBER)
+
   // --- THÊM MỚI CHO TÍNH NĂNG /STARTBOT VÀ /STOPBOT ---
-  isBotActive Boolean   @default(true)
-  
-  createdAt  DateTime   @default(now())
-  expiredAt  DateTime
-  
-  categories Category[]
+  isBotActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  expiredAt DateTime
+
+  follows Follow[]
 }
 
-model Category {
+model Follow {
   id              Int       @id @default(autoincrement())
-  categoryId      String
+  keyword         String?
+  categoryId      String?
   brandId         String?
-  status          String?   // ITEM_STATUS_ON_SALE, ITEM_STATUS_SOLD_OUT, ITEM_STATUS_TRADING_OUT
+  status          String? // ITEM_STATUS_ON_SALE, ITEM_STATUS_SOLD_OUT, ITEM_STATUS_TRADING_OUT
   priceMin        Int?
   priceMax        Int?
   itemConditionId String?
   isActive        Boolean   @default(false)
   lastScannedAt   DateTime?
-  
-  userId          Int
-  user            User      @relation(fields: [userId], references: [id])
-  
-  items           Item[]
-}
 
-model Item {
-  id          String
-  categoryId  Int
-  createdAt   DateTime @default(now())
-  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-
-  @@id([id, categoryId])
-  @@index([categoryId, createdAt])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }

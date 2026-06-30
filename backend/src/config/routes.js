@@ -1,5 +1,6 @@
 import followRoutes from '../modules/follow/follow.routes.js';
 import userRoutes from '../modules/user/user.routes.js';
+import cronRoutes from '../modules/cron/cron.routes.js';
 
 /**
  * Setup tất cả các routes của ứng dụng
@@ -9,7 +10,7 @@ export const setupRoutes = (app) => {
     // --- Routes Mounting ---
     app.use('/api/follows', followRoutes);
     app.use('/api/users', userRoutes);
-
+    app.use('/api/cron', cronRoutes);
 
     // Route mặc định kiểm tra server
     app.get('/', (req, res) => {

@@ -1,6 +1,6 @@
 # Mercari Alert Bot
 
-Dự án này là một hệ thống bot tự động cào thông tin (crawler) và cảnh báo sản phẩm trên Mercari dựa trên các từ khóa (keywords) được quản lý bởi người dùng. Dự án được chia làm 2 phần chính: **Backend** (Node.js/Express, Prisma, Playwright) và **Frontend** (React, Vite).
+Dự án này là một hệ thống bot tự động cào thông tin (crawler) và cảnh báo sản phẩm trên Mercari dựa trên các từ khóa (keywords) và Categories được quản lý bởi người dùng. Dự án được chia làm 2 phần chính: **Backend** (Node.js/Express, Prisma, Playwright) và **Frontend** (React, Vite).
 
 ---
 
@@ -21,7 +21,8 @@ mercari-alert-bot/
 │   │   │   ├── auth.middleware.js       # Xác thực JWT (Authentication)
 │   │   │   ├── role.middleware.js       # Phân quyền (Authorization)
 │   │   │   ├── expiry.middleware.js     # Kiểm tra tài khoản hết hạn (expiredAt)
-│   │   │   └── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
+│   │   │   ├── error.middleware.js      # Middleware bắt và xử lý lỗi tập trung
+│   │   │   └── cron.middleware.js       # Middleware bảo vệ Cron-job.org
 │   │   ├── modules/                     # Tầng Module chứa các tính năng độc lập (Feature-driven)
 │   │   │   ├── user/                    # Module User (Đăng nhập/Đăng ký/Quản lý)
 │   │   │   │   ├── user.controller.js
@@ -31,6 +32,8 @@ mercari-alert-bot/
 │   │   │   │   ├── follow.controller.js
 │   │   │   │   ├── follow.routes.js
 │   │   │   │   └── follow.service.js
+│   │   │   ├── cron/                    # Module Cron Job
+│   │   │   │   └── cron.routes.js
 │   │   │   └── crawler/                 # Module Crawler & Telegram Bot
 │   │   │       ├── crawler.service.js   # Cỗ máy Playwright quét dữ liệu & Cache
 │   │   │       ├── itemManager.service.js # Quản lý Sliding Window cho Item
@@ -62,6 +65,7 @@ mercari-alert-bot/
     │   └── main.jsx                     # Điểm khởi chạy (Entry Point)
     ├── index.html                       # File HTML gốc
     ├── vite.config.js                   # Cấu hình cho Vite bundler
+    ├── vercel.json                      # Cấu hình định tuyến cho Vercel (chống 404)
     └── package.json                     # Quản lý thư viện Frontend
 ```
 
@@ -106,11 +110,6 @@ Hãy đảm bảo máy tính của bạn đã cài đặt sẵn **Node.js** (khu
 ---
 
 ## 📋 Thay đổi gần đây
-- **Authentication Toàn Diện**: Triển khai `AuthContext` (React Context API) kết hợp `localStorage` để quản lý trạng thái đăng nhập toàn cục.
-- **Bảo Vệ Route (Protected Route)**: Áp dụng component `<ProtectedRoute>` chặn người dùng chưa đăng nhập truy cập vào các trang cấu hình (Search Configs, Notifications, Settings).
-- **Trải Nghiệm Đăng Nhập**: Cập nhật form Đăng nhập để gọi API thực tế. Header hiển thị tên user và nút Logout sau khi đăng nhập.
-- **Tự Động Đăng Xuất**: Thêm Interceptor cho Axios tự động xóa phiên và đưa về `/login` nếu token hết hạn (nhận mã lỗi 401).
-- **Settings & Notifications**: Cập nhật SettingsTab thành tính năng Đổi Mật Khẩu, NotificationsTab tự động lấy và cập nhật Telegram Chat ID.
 
 ## 🚀 Hướng dẫn Deploy Lên Production
 
@@ -124,15 +123,24 @@ Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependen
    - `DATABASE_URL`: Link kết nối tới Database Postgres (Neon, Supabase...).
    - `TELEGRAM_TOKEN`: Token bot Telegram của bạn.
    - `JWT_SECRET`: Chuỗi bảo mật ngẫu nhiên.
+   - `ALLOWED_ORIGINS`: Danh sách các domain được phép truy cập Backend (Ví dụ: `https://ten-mien.vercel.app,http://localhost:5173`).
+   - `CRON_SECRET_KEY`: Khóa bí mật dùng để xác thực request từ Cron-job.org (tự đặt 1 chuỗi ký tự dài).
 6. Render sẽ tự động build `Dockerfile`, cài thư viện OS, Playwright Chromium và khởi chạy.
+
+### Cấu hình Cron-job.org để giữ Server thức
+1. Tạo 1 job mới trên [cron-job.org](https://cron-job.org/).
+2. URL: `https://<ten-backend-render>/api/cron/ping`.
+3. Schedule: Mỗi 10 phút.
+4. Ở phần Advanced > Headers: Thêm 1 Header với Key là `x-cron-secret` và Value là chuỗi `CRON_SECRET_KEY` bạn đã cài trên Render.
 
 ### 2. Deploy Frontend Lên Vercel
 1. Vào Vercel, tạo Project mới và kết nối Repo Github.
 2. Root Directory: Chọn thư mục `frontend/`.
 3. Framework Preset: Để mặc định `Vite`.
 4. Biến môi trường (Environment Variables):
-   - Bắt buộc thêm biến `VITE_API_URL` trỏ tới đường link Backend bạn vừa lấy được từ Render (Ví dụ: `https://mercari-backend.onrender.com/api`).
-5. Deploy.
+   - Bắt buộc thêm biến `VITE_API_URL` trỏ tới đường link Backend bạn vừa lấy được từ Render (Ví dụ: `https://mercari-backend.onrender.com`).
+   *Lưu ý: Không để dấu `/` ở cuối biến `VITE_API_URL`.*
+5. Deploy. (Trong code đã có sẵn file `vercel.json` để fix lỗi 404 khi load lại trang cho ứng dụng React Router).
 
 ---
 
@@ -160,7 +168,8 @@ Backend được đóng gói sẵn Docker để xử lý vấn đề OS dependen
 | `DELETE` | `/:id` | 🔑 | Xóa Follow | — |
 | `GET` | `/all` | 👑 | Admin xem tất cả cấu hình Follow của mọi User | — |
 
-### 4. Health Check
-| Method | Endpoint | Quyền | Mô tả |
-|--------|----------|-------|-------|
-| `GET` | `/health` | 🔓 | Kiểm tra server còn sống (dùng UptimeRobot ping chống Render Sleep) |
+### 4. Health Check & Cron Job
+| Method | Endpoint | Quyền | Mô tả | Header |
+|--------|----------|-------|-------|--------|
+| `GET` | `/health` | 🔓 | Kiểm tra server còn sống (Public Health Check) | — |
+| `GET` | `/api/cron/ping` | 🔐 | Route chuyên dụng cho Cron-job.org để trigger/ping | `x-cron-secret` |

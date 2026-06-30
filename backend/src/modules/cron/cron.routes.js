@@ -1,5 +1,5 @@
 import express from 'express';
-import { verifyCronSecret } from '../middlewares/cron.middleware.js';
+import { verifyCronSecret } from '../../middlewares/cron.middleware.js';
 
 
 const router = express.Router();

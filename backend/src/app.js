@@ -11,15 +11,15 @@ const app = express();
 app.use(helmet());
 
 // Cấu hình CORS linh hoạt
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
     : ['http://localhost:5173']; // Mặc định cho phép dev ở localhost
 
 app.use(cors({
     origin: function (origin, callback) {
         // Cho phép request không có origin (ví dụ server-to-server request như cron-job.org, curl, postman)
         if (!origin) return callback(null, true);
-        
+
         if (allowedOrigins.indexOf(origin) === -1) {
             const msg = 'CORS Policy: Nguồn ' + origin + ' không được phép truy cập.';
             return callback(new Error(msg), false);

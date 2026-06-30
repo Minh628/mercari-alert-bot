@@ -25,7 +25,7 @@ let activeFollows = [];
 
 let activePage = null;
 // ✅ Thay thế biến đơn bằng Map để lưu cấu hình API cho từng Follow
-const apiConfigsCache = new Map(); 
+const apiConfigsCache = new Map();
 let scanCount = 0;
 
 let persistentBrowser = null;
@@ -138,11 +138,11 @@ export async function triggerReloadCategories() {
                 brandId: true,
                 priceMin: true,
                 priceMax: true,
-                user: { 
-                    select: { 
+                user: {
+                    select: {
                         telegramId: true,
                         expiredAt: true
-                    } 
+                    }
                 }
             }
         });
@@ -270,7 +270,7 @@ async function setupAndGotoPage(context, searchUrl) {
 
     const apiConfigPromise = new Promise((resolve) => {
         page.on('request', (request) => {
-            if (request.url().includes('entities:search') ) {
+            if (request.url().includes('entities:search')) {
                 const headers = request.headers();
                 delete headers['content-length'];
                 delete headers['cookie'];
@@ -287,7 +287,7 @@ async function setupAndGotoPage(context, searchUrl) {
     });
 
     const responsePromise = page.waitForResponse(
-        resp => resp.url().includes('entities:search') ,
+        resp => resp.url().includes('entities:search'),
         { timeout: CRAWLER_TIMEOUT }
     );
 
@@ -309,7 +309,7 @@ async function executeInternalFetch(page, config) {
     return await page.evaluate(async (cfg) => {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), CRAWLER_TIMEOUT); // Timeout 45s
+            const timeoutId = setTimeout(() => controller.abort(), 45000); // Timeout 45s
 
             const resp = await fetch(cfg.url, {
                 method: cfg.method,
@@ -318,7 +318,7 @@ async function executeInternalFetch(page, config) {
                 credentials: 'include',
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
 
             if (!resp.ok) {
@@ -362,7 +362,7 @@ async function fetchFollowData(context, follow, searchUrl) {
             console.log(`   -> ⚠️ API trả lỗi (status: ${fetchResult.status}). Fallback: goto() lại để refresh session...`);
             // Lỗi session -> reset tab, xóa cache toàn bộ để goto lại
             await resetActivePage();
-            
+
             const result = await setupAndGotoPage(context, searchUrl);
             activePage = result.page;
             data = result.data;
@@ -473,9 +473,9 @@ export async function startCrawlerLoop() {
 
             await scanSingleFollow(context, follow);
             scanCount++;
-            
+
             // Thêm delay nhỏ giữa các Follow để tránh rate limit
-            await randomDelay(1000, 2000); 
+            await randomDelay(1000, 2000);
         }
 
     } catch (error) {
